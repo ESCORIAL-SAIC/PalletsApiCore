@@ -54,7 +54,7 @@ app.MapPost("/api/login", async (LoginDto login, ESCORIALContext context) =>
 app.MapGet("api/pallets", async (string? numero, ESCORIALContext context) =>
 {
     if (string.IsNullOrWhiteSpace(numero))
-        return Results.BadRequest("El número de pallet es requerido");
+        return Results.BadRequest("El nï¿½mero de pallet es requerido");
     var pallet = await context.cenker_pallets
         .Where(cenker_pallets => cenker_pallets.codigo == numero)
         .FirstOrDefaultAsync();
@@ -66,7 +66,7 @@ app.MapGet("api/pallets", async (string? numero, ESCORIALContext context) =>
 app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext context) =>
 {
     if (string.IsNullOrWhiteSpace(numero))
-        return Results.BadRequest("El número de pallet es requerido");
+        return Results.BadRequest("El nï¿½mero de pallet es requerido");
     var palletId = await context.cenker_pallets
         .Where(cenker_pallets => cenker_pallets.codigo == numero)
         .Select(cenker_pallets => cenker_pallets.id)
@@ -103,11 +103,21 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
     if (string.IsNullOrWhiteSpace(tipo))
         return Results.BadRequest("El tipo de producto es requerido");
     if (!numero.HasValue)
-        return Results.BadRequest("El número de producto es requerido");
+        return Results.BadRequest("El nï¿½mero de producto es requerido");
 
     var etiqueta = await context.vp_etiquetas
         .FirstOrDefaultAsync(vp_etiquetas => vp_etiquetas.tipo == tipo && vp_etiquetas.numero == numero.Value);
     if (etiqueta is null)
+        return Results.NotFound();
+
+    var controlFinal = await context.aux_controlcalidad
+        .Where(c => c.Etiqueta == numero &&
+            c.ControladorEstado &&
+            (c.PuestoControlId == Guid.Parse("a82c68a6-3d92-4332-9d37-e18cf6b3f09e") ||
+            c.PuestoControlId == Guid.Parse("345de2cc-be8c-4c28-bce7-6a5ee90c0300")))
+        .FirstOrDefaultAsync();
+
+    if (controlFinal is null)
         return Results.NotFound();
 
     var producto = await context.producto
@@ -200,7 +210,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
     try
     {
         if (string.IsNullOrEmpty(pallet.codigo))
-            return Results.BadRequest("El código de pallet es requerido.");
+            return Results.BadRequest("El cï¿½digo de pallet es requerido.");
         if (pallet.Products.Count < 1)
             return Results.BadRequest("No hay productos para asociar.");
 
@@ -208,7 +218,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
             .FirstOrDefaultAsync(p => p.codigo == pallet.codigo);
 
         if (palletId is null)
-            return Results.NotFound("No se encontró el pallet.");
+            return Results.NotFound("No se encontrï¿½ el pallet.");
 
         var productosAsociar = pallet.Products.Where(p => !p.deleted);
         var productosDesasociar = pallet.Products.Where(p => p.deleted);
@@ -279,7 +289,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
     catch (Exception)
     {
         await transaction.RollbackAsync();
-        return Results.BadRequest("Se produjo una excepción no controlada. Los cambios no se guardarán.");
+        return Results.BadRequest("Se produjo una excepciï¿½n no controlada. Los cambios no se guardarï¿½n.");
     }
     finally
     {
