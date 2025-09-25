@@ -299,4 +299,22 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
 .WithName("asociarProductos")
 .WithOpenApi();
 
+app.MapPost("api/pallets/transferirExpedicion", async (List<cenker_pallets> pallets, ESCORIALContext context) =>
+{
+    if (pallets.Count < 1)
+        return Results.BadRequest("No hay pallets para transferir.");
+    foreach (var pallet in pallets)
+    {
+        var palletDb = await context.cenker_pallets
+            .FirstOrDefaultAsync(p => p.codigo == pallet.codigo);
+        if (palletDb is null)
+            continue;
+        palletDb.transferir = true;
+    }
+    context.SaveChanges();
+    return Results.NoContent();
+})
+.WithName("transferirExpedicion")
+.WithOpenApi();
+
 await app.RunAsync();

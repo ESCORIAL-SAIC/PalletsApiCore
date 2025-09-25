@@ -23,6 +23,7 @@ public partial class cenker_pallets
 
     [Column(TypeName = "character varying")]
     public string fecha_alta { get; set; }
+    public bool transferir { get; set; }
 
     [NotMapped]
     public List<Product> Products { get; set; }
