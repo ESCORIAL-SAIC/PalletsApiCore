@@ -15,6 +15,8 @@ public partial class aux_controlcalidad
     public int Etiqueta { get; set; }
     [Column("puestocontrol_id")]
     public Guid PuestoControlId { get; set; }
+    [Column("puestocontrol_n")]
+    public string PuestoControlN { get; set; }
     [Column("controlador_estado")]
     public bool ControladorEstado { get; set; }
 }
