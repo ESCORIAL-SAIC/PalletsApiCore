@@ -1,0 +1,12 @@
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace PalletsApiCore.Models
+{
+    public class ud_producto
+    {
+        [Key]
+        public Guid id { get; set; }
+        [StringLength(40)]
+        public string cant_x_pallet { get; set; }
+    }
+}
