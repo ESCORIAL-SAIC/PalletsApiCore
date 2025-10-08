@@ -124,6 +124,11 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
     if (producto is null)
         return Results.NotFound("No se encontro un producto correspondiente al numero de serie");
 
+    var udProducto = await context.ud_producto
+        .FirstOrDefaultAsync(ud_producto => ud_producto.id == producto.boextension_id);
+    if (udProducto is null)
+        return Results.NotFound("No se encontro la unidad de negocio del producto");
+
     var product = new Product
     {
         serial = (int)etiqueta.numero!,
@@ -131,7 +136,7 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
         productCode = producto.codigo,
         description = producto.descripcion,
         type = etiqueta.tipo,
-        maxCantByPallet = etiqueta.tipo.Equals("COCINA") ? 8 : 12,
+        maxCantByPallet = udProducto.cant_x_pallet,
         isAvailable = await Fun.IsAvailableAsync((int)etiqueta.numero, context)
     };
 
@@ -316,4 +321,5 @@ app.MapPost("api/pallets/transferirExpedicion", async (List<cenker_pallets> pall
 .WithName("transferirExpedicion")
 .WithOpenApi();
 
-await app.RunAsync();
+await app.RunAsync()
+    ;

@@ -7,6 +7,6 @@ namespace PalletsApiCore.Models
         [Key]
         public Guid id { get; set; }
         [StringLength(40)]
-        public string cant_x_pallet { get; set; }
+        public int cant_x_pallet { get; set; }
     }
 }
