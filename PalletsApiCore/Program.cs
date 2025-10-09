@@ -79,6 +79,8 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
     {
         var producto = await context.producto
             .FirstOrDefaultAsync(producto => producto.id == item.producto_id);
+        var udProducto = await context.ud_producto
+            .FirstOrDefaultAsync(ud_producto => ud_producto.id == producto!.boextension_id);
         var etiqueta = await context.vp_etiquetas
             .FirstOrDefaultAsync(vp_etiquetas => vp_etiquetas.numero == int.Parse(item.serie) && vp_etiquetas.producto_id == producto!.id);
         if (producto is not null)
@@ -89,7 +91,7 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
                 productCode = producto.codigo,
                 description = producto.descripcion,
                 type = etiqueta?.tipo,
-                maxCantByPallet = 1,
+                maxCantByPallet = udProducto.cant_x_pallet,
                 isAvailable = true
             });
     }
