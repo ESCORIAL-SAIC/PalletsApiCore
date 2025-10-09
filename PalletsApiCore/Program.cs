@@ -147,68 +147,6 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
 .WithName("getProductos")
 .WithOpenApi();
 
-app.MapGet("api/cocinas", async (int? numero, ESCORIALContext context) =>
-{
-    var query = context.etiquetas_maestro_cocinas.AsQueryable();
-    if (numero.HasValue)
-        query = query.Where(c => c.numero == numero.Value);
-    var cocinas = await query
-        .ToListAsync();
-    var productos = new List<Product>();
-    foreach (var cocina in cocinas)
-    {
-        var producto = await context.producto
-            .FirstOrDefaultAsync(producto => producto.codigo == cocina.idproducto);
-        if (producto is not null)
-            productos.Add(new Product
-            {
-                serial = cocina.numero,
-                productId = producto.id,
-                productCode = producto.codigo,
-                description = producto.descripcion,
-                type = "COCINA",
-                maxCantByPallet = 8,
-                isAvailable = await Fun.IsAvailableAsync(cocina.numero, context)
-            });
-    }
-    if (numero.HasValue && productos.Count < 1)
-        return Results.NotFound();
-    return productos.Count == 1 ? Results.Ok(productos.FirstOrDefault()) : Results.Ok(productos);
-})
-.WithName("getCocinas")
-.WithOpenApi();
-
-app.MapGet("api/termos", async (int? numero, ESCORIALContext context) =>
-{
-    var query = context.etiquetas_maestro_termotanques.AsQueryable();
-    if (numero.HasValue)
-        query = query.Where(c => c.numero == numero.Value);
-    var termos = await query
-        .ToListAsync();
-    var productos = new List<Product>();
-    foreach (var termo in termos)
-    {
-        var producto = await context.producto
-            .FirstOrDefaultAsync(producto => producto.codigo == termo.idproducto);
-        if (producto is not null)
-            productos.Add(new Product
-            {
-                serial = termo.numero,
-                productId = producto.id,
-                productCode = producto.codigo,
-                description = producto.descripcion,
-                type = "TERMOTANQUE",
-                maxCantByPallet = 12,
-                isAvailable = await Fun.IsAvailableAsync(termo.numero, context)
-            });
-    }
-    if (numero.HasValue && productos.Count < 1)
-        return Results.NotFound();
-    return productos.Count == 1 ? Results.Ok(productos.FirstOrDefault()) : Results.Ok(productos);
-})
-.WithName("getTermos")
-.WithOpenApi();
-
 app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCORIALContext context) =>
 {
     await using var transaction = await context.Database.BeginTransactionAsync();
