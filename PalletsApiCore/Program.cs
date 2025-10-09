@@ -79,6 +79,8 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
     {
         var producto = await context.producto
             .FirstOrDefaultAsync(producto => producto.id == item.producto_id);
+        var udProducto = await context.ud_producto
+            .FirstOrDefaultAsync(ud_producto => ud_producto.id == producto!.boextension_id);
         var etiqueta = await context.vp_etiquetas
             .FirstOrDefaultAsync(vp_etiquetas => vp_etiquetas.numero == int.Parse(item.serie) && vp_etiquetas.producto_id == producto!.id);
         if (producto is not null)
@@ -89,7 +91,7 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
                 productCode = producto.codigo,
                 description = producto.descripcion,
                 type = etiqueta?.tipo,
-                maxCantByPallet = 1,
+                maxCantByPallet = udProducto.cant_x_pallet,
                 isAvailable = true
             });
     }
@@ -143,68 +145,6 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
     return Results.Ok(product);
 })
 .WithName("getProductos")
-.WithOpenApi();
-
-app.MapGet("api/cocinas", async (int? numero, ESCORIALContext context) =>
-{
-    var query = context.etiquetas_maestro_cocinas.AsQueryable();
-    if (numero.HasValue)
-        query = query.Where(c => c.numero == numero.Value);
-    var cocinas = await query
-        .ToListAsync();
-    var productos = new List<Product>();
-    foreach (var cocina in cocinas)
-    {
-        var producto = await context.producto
-            .FirstOrDefaultAsync(producto => producto.codigo == cocina.idproducto);
-        if (producto is not null)
-            productos.Add(new Product
-            {
-                serial = cocina.numero,
-                productId = producto.id,
-                productCode = producto.codigo,
-                description = producto.descripcion,
-                type = "COCINA",
-                maxCantByPallet = 8,
-                isAvailable = await Fun.IsAvailableAsync(cocina.numero, context)
-            });
-    }
-    if (numero.HasValue && productos.Count < 1)
-        return Results.NotFound();
-    return productos.Count == 1 ? Results.Ok(productos.FirstOrDefault()) : Results.Ok(productos);
-})
-.WithName("getCocinas")
-.WithOpenApi();
-
-app.MapGet("api/termos", async (int? numero, ESCORIALContext context) =>
-{
-    var query = context.etiquetas_maestro_termotanques.AsQueryable();
-    if (numero.HasValue)
-        query = query.Where(c => c.numero == numero.Value);
-    var termos = await query
-        .ToListAsync();
-    var productos = new List<Product>();
-    foreach (var termo in termos)
-    {
-        var producto = await context.producto
-            .FirstOrDefaultAsync(producto => producto.codigo == termo.idproducto);
-        if (producto is not null)
-            productos.Add(new Product
-            {
-                serial = termo.numero,
-                productId = producto.id,
-                productCode = producto.codigo,
-                description = producto.descripcion,
-                type = "TERMOTANQUE",
-                maxCantByPallet = 12,
-                isAvailable = await Fun.IsAvailableAsync(termo.numero, context)
-            });
-    }
-    if (numero.HasValue && productos.Count < 1)
-        return Results.NotFound();
-    return productos.Count == 1 ? Results.Ok(productos.FirstOrDefault()) : Results.Ok(productos);
-})
-.WithName("getTermos")
 .WithOpenApi();
 
 app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCORIALContext context) =>
