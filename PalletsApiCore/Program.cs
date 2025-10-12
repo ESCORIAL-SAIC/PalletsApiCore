@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PalletsApiCore;
 using PalletsApiCore.Models;
+using System.Linq;
 
 var builder = WebApplication.CreateBuilder();
 builder.Configuration
@@ -67,38 +68,58 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
 {
     if (string.IsNullOrWhiteSpace(numero))
         return Results.BadRequest("El numero de pallet es requerido");
+
     var palletId = await context.cenker_pallets
-        .Where(cenker_pallets => cenker_pallets.codigo == numero)
-        .Select(cenker_pallets => cenker_pallets.id)
+        .Where(p => p.codigo == numero)
+        .Select(p => p.id)
         .FirstOrDefaultAsync();
-    var palletProducts = await context.cenker_prod_x_pallet
-        .Where(cenker_prod_x_pallet => cenker_prod_x_pallet.pallet_id == palletId && cenker_prod_x_pallet.activo)
+    if (palletId == Guid.Empty)
+        return Results.NotFound("Pallet no encontrado");
+    var productosBase = await (
+        from c in context.cenker_prod_x_pallet
+        join p in context.producto on c.producto_id equals p.id
+        join u in context.ud_producto on p.boextension_id equals u.id
+        where c.pallet_id == palletId && c.activo
+        select new
+        {
+            Serie = c.serie,
+            ProductoId = p.id,
+            p.codigo,
+            p.descripcion,
+            u.cant_x_pallet
+        }
+    )
+    .AsNoTracking()
+    .ToListAsync();
+    var series = productosBase.Select(x => int.Parse(x.Serie)).Distinct().ToList();
+    var productoIds = productosBase.Select(x => x.ProductoId).Distinct().ToList();
+    var etiquetas = await context.vp_etiquetas
+        .Where(v => series.Contains((int)v.numero!) && productoIds.Contains((Guid)v.producto_id!))
+        .AsNoTracking()
         .ToListAsync();
-    var productos = new List<Product>();
-    foreach (var item in palletProducts)
+    var result = productosBase.Select(x =>
     {
-        var producto = await context.producto
-            .FirstOrDefaultAsync(producto => producto.id == item.producto_id);
-        var udProducto = await context.ud_producto
-            .FirstOrDefaultAsync(ud_producto => ud_producto.id == producto!.boextension_id);
-        var etiqueta = await context.vp_etiquetas
-            .FirstOrDefaultAsync(vp_etiquetas => vp_etiquetas.numero == int.Parse(item.serie) && vp_etiquetas.producto_id == producto!.id);
-        if (producto is not null)
-            productos.Add(new Product
-            {
-                serial = int.Parse(item.serie),
-                productId = producto.id,
-                productCode = producto.codigo,
-                description = producto.descripcion,
-                type = etiqueta?.tipo,
-                maxCantByPallet = udProducto.cant_x_pallet,
-                isAvailable = true
-            });
-    }
-    return Results.Ok(productos);
+        var etiqueta = etiquetas.FirstOrDefault(e =>
+            e.numero == int.Parse(x.Serie) && e.producto_id == x.ProductoId);
+
+        return new Product
+        {
+            serial = int.Parse(x.Serie),
+            productId = x.ProductoId,
+            productCode = x.codigo,
+            description = x.descripcion,
+            type = etiqueta?.tipo,
+            maxCantByPallet = x.cant_x_pallet,
+            isAvailable = true
+        };
+    }).ToList();
+
+    return Results.Ok(result);
 })
 .WithName("getProductosByPallet")
 .WithOpenApi();
+
+
 
 app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext context) =>
 {
