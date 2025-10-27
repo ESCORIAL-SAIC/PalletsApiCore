@@ -134,9 +134,9 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
         return Results.NotFound("No se encontro el numero de serie");
 
     var controlFinal = await context.aux_controlcalidad
-        .Where(c => c.Etiqueta == numero &&
-            c.ControladorEstado &&
-            c.PuestoControlN == "Control Final")
+        .Where(c => c.Etiqueta == numero
+            && c.PuestoControlN == "Control Final"
+            && (c.ControladorEstado || (!c.ControladorEstado && c.ReparadorEstado)))
         .FirstOrDefaultAsync();
 
     if (controlFinal is null)
@@ -282,5 +282,4 @@ app.MapPost("api/pallets/transferirExpedicion", async (List<cenker_pallets> pall
 .WithName("transferirExpedicion")
 .WithOpenApi();
 
-await app.RunAsync()
-    ;
+await app.RunAsync();
