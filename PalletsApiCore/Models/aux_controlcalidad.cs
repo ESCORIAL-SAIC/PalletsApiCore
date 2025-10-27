@@ -19,4 +19,6 @@ public partial class aux_controlcalidad
     public string PuestoControlN { get; set; }
     [Column("controlador_estado")]
     public bool ControladorEstado { get; set; }
+    [Column("reparador_estado")]
+    public bool ReparadorEstado { get; set; }
 }
