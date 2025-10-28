@@ -136,7 +136,7 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
     var controlFinal = await context.aux_controlcalidad
         .Where(c => c.Etiqueta == numero
             && c.PuestoControlN == "Control Final"
-            && (c.ControladorEstado || (!c.ControladorEstado && c.ReparadorEstado)))
+            && (c.ControladorEstado ?? false || ((c.ControladorEstado ?? false) && (c.ReparadorEstado ?? false))))
         .FirstOrDefaultAsync();
 
     if (controlFinal is null)
