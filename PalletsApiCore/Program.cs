@@ -134,10 +134,9 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
         return Results.NotFound("No se encontro el numero de serie");
 
     var controlFinal = await context.aux_controlcalidad
-        .Where(c => c.Etiqueta == numero
+        .FirstOrDefaultAsync(c => c.Etiqueta == numero
             && c.PuestoControlN == "Control Final"
-            && (c.ControladorEstado ?? false || ((c.ControladorEstado ?? false) && (c.ReparadorEstado ?? false))))
-        .FirstOrDefaultAsync();
+            && ((c.ControladorEstado ?? false) || (c.ReparadorEstado ?? false)));
 
     if (controlFinal is null)
         return Results.NotFound("El numero de serie no posee control final");
