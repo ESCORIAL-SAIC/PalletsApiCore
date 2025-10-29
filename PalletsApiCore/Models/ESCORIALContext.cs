@@ -35,6 +35,8 @@ public partial class ESCORIALContext : DbContext
 
     public virtual DbSet<v_persona> v_persona { get; set; }
 
+    public virtual DbSet<api_pallets_controlfinal> api_pallets_controlfinal { get; set; }
+
     public virtual DbSet<cenker_pallets_auditoria> cenker_pallets_auditoria { get; set; }
 
     public virtual DbSet<aux_controlcalidad> aux_controlcalidad { get; set; }
@@ -156,9 +158,9 @@ public partial class ESCORIALContext : DbContext
             entity.ToView("vp_etiquetas");
         });
 
-        modelBuilder.Entity<vp_etiquetas>(entity =>
+        modelBuilder.Entity<api_pallets_controlfinal>(entity =>
         {
-
+            entity.ToView("api_pallets_controlfinal");
         });
 
         modelBuilder.Entity<v_persona>(entity =>
