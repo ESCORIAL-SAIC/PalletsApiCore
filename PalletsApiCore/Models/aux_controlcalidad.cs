@@ -1,3 +1,5 @@
+#nullable disable
+
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -18,5 +20,7 @@ public partial class aux_controlcalidad
     [Column("puestocontrol_n")]
     public string PuestoControlN { get; set; }
     [Column("controlador_estado")]
-    public bool ControladorEstado { get; set; }
+    public bool? ControladorEstado { get; set; }
+    [Column("reparador_estado")]
+    public bool? ReparadorEstado { get; set; }
 }
