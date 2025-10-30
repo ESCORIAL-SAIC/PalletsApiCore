@@ -24,6 +24,8 @@ public partial class cenker_pallets
     [Column(TypeName = "character varying")]
     public string fecha_alta { get; set; }
     public bool transferir { get; set; }
+    public bool procesado_transactor { get; set; }
+    public DateTime? fecha_procesado { get; set; }
 
     [NotMapped]
     public List<Product> Products { get; set; }
