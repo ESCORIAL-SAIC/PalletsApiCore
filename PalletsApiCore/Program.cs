@@ -189,7 +189,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         var productosAsociar = pallet.Products.Where(p => !p.deleted);
         var productosDesasociar = pallet.Products.Where(p => p.deleted);
 
-        var palletDesasociar = pallet.Products.All(p => !p.deleted);
+        var palletDesasociar = pallet.Products.All(p => p.deleted);
 
         if (palletDesasociar)
         {
