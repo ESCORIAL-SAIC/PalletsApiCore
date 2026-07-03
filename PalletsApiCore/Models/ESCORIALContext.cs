@@ -29,6 +29,8 @@ public partial class ESCORIALContext : DbContext
 
     public virtual DbSet<vp_etiquetas> vp_etiquetas { get; set; }
 
+    public virtual DbSet<vp_etiquetas_con_importados> vp_etiquetas_con_importados { get; set; }
+
     public virtual DbSet<ud_empleado> ud_empleado { get; set; }
 
     public virtual DbSet<empleado> empleado { get; set; }
@@ -156,6 +158,11 @@ public partial class ESCORIALContext : DbContext
         modelBuilder.Entity<vp_etiquetas>(entity =>
         {
             entity.ToView("vp_etiquetas");
+        });
+
+        modelBuilder.Entity<vp_etiquetas_con_importados>(entity =>
+        {
+            entity.ToView("vp_etiquetas_con_importados");
         });
 
         modelBuilder.Entity<api_pallets_controlfinal>(entity =>

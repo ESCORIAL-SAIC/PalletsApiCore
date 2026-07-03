@@ -37,6 +37,10 @@
       {
          "Name": "public.vp_etiquetas",
          "ObjectType": 3
+      },
+      {
+         "Name": "public.vp_etiquetas_con_importados",
+         "ObjectType": 3
       }
    ],
    "UiHint": null,

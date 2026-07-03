@@ -93,7 +93,7 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
     .ToListAsync();
     var series = productosBase.Select(x => int.Parse(x.Serie)).Distinct().ToList();
     var productoIds = productosBase.Select(x => x.ProductoId).Distinct().ToList();
-    var etiquetas = await context.vp_etiquetas
+    var etiquetas = await context.vp_etiquetas_con_importados
         .Where(v => series.Contains((int)v.numero!) && productoIds.Contains((Guid)v.producto_id!))
         .AsNoTracking()
         .ToListAsync();
@@ -128,8 +128,8 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
     if (!numero.HasValue)
         return Results.BadRequest("El numero de producto es requerido");
 
-    var etiqueta = await context.vp_etiquetas
-        .FirstOrDefaultAsync(vp_etiquetas => vp_etiquetas.tipo == tipo && vp_etiquetas.numero == numero.Value);
+    var etiqueta = await context.vp_etiquetas_con_importados
+        .FirstOrDefaultAsync(vp_etiquetas_con_importados => vp_etiquetas_con_importados.tipo == tipo && vp_etiquetas_con_importados.numero == numero.Value);
     if (etiqueta is null)
         return Results.NotFound("No se encontro el numero de serie");
 
