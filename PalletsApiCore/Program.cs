@@ -185,7 +185,7 @@ app.MapGet("api/productos", async (string? tipo, int? numero, string? ean, ESCOR
         description = seleccionado.producto.descripcion,
         type = tipo,
         maxCantByPallet = seleccionado.udProducto.cant_x_pallet,
-        isAvailable = await Fun.IsAvailableAsync(numero.Value, context)
+        isAvailable = await Fun.IsAvailableAsync(numero.Value, seleccionado.producto.id, context)
     };
 
     return Results.Ok(product);
