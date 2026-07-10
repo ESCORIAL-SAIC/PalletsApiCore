@@ -121,19 +121,22 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
 
 
 
-app.MapGet("api/productos", async (string? tipo, int? numero, string? ean, ESCORIALContext context) =>
+app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ESCORIALContext context) =>
 {
     if (string.IsNullOrWhiteSpace(tipo))
         return Results.BadRequest("El tipo de producto es requerido");
-    if (!numero.HasValue)
+    if (string.IsNullOrWhiteSpace(numero))
         return Results.BadRequest("El numero de producto es requerido");
+
+    if (!Fun.TryNormalizarSerie(numero, tipo, out var serie))
+        return Results.BadRequest("El numero de producto no es valido");
 
     // La serie puede resolver a varios productos (caso importados); el EAN desambigua cuál es.
     var candidatos = await (
         from e in context.vp_etiquetas_con_importados
         join p in context.producto on e.producto_id equals (Guid?)p.id
         join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
-        where e.tipo == tipo && e.numero == numero.Value
+        where e.tipo == tipo && e.numero == serie
         select new { producto = p, udProducto = ud }
     ).ToListAsync();
 
@@ -145,7 +148,7 @@ app.MapGet("api/productos", async (string? tipo, int? numero, string? ean, ESCOR
     {
         var controlFinal = await context.api_pallets_controlfinal
             .FirstOrDefaultAsync(c =>
-                c.Numero == numero &&
+                c.Numero == serie &&
                 (c.Usuario == "postventa"
                     || (c.PuestoControl == "Control Final"
                         && (c.ControladorEstado || c.ReparadorEstado))));
@@ -179,13 +182,13 @@ app.MapGet("api/productos", async (string? tipo, int? numero, string? ean, ESCOR
 
     var product = new Product
     {
-        serial = numero.Value,
+        serial = serie,
         productId = seleccionado.producto.id,
         productCode = seleccionado.producto.codigo,
         description = seleccionado.producto.descripcion,
         type = tipo,
         maxCantByPallet = seleccionado.udProducto.cant_x_pallet,
-        isAvailable = await Fun.IsAvailableAsync(numero.Value, seleccionado.producto.id, context)
+        isAvailable = await Fun.IsAvailableAsync(serie, seleccionado.producto.id, context)
     };
 
     return Results.Ok(product);
