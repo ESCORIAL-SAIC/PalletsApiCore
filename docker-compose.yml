@@ -1,0 +1,11 @@
+services:
+  api:
+    image: TU_REGISTRY/palletsapi:latest   # p.ej. midockerhub/palletsapi:latest
+    container_name: palletsapi
+    restart: unless-stopped
+    ports:
+      - "8080:8080"                          # host:container — ajustar host si querés 80
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production    # Development si querés Swagger UI
+    volumes:
+      - ./appsettings.json:/app/appsettings.json:ro

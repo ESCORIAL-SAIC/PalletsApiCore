@@ -41,6 +41,8 @@ API RESTful desarrollada en **.NET 8** (minimal API) con **Entity Framework Core
 
 4. En *Development*, abrir **Swagger UI** en `/swagger` sobre la URL que informe la consola (por ejemplo `http://localhost:5047/swagger`).
 
+> 🐳 Para desplegar en un servidor Linux con Docker (build, push a registry y actualización del container), ver **[DEPLOY.md](DEPLOY.md)**.
+
 ---
 
 ## 🔐 Autenticación
