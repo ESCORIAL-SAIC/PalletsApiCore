@@ -26,36 +26,31 @@ Guía para **containerizar** la Pallets API, **desplegarla** en un servidor Linu
 
 ---
 
-## 🏷️ Registry: GitHub Container Registry (ghcr.io)
+## 🤖 Publicación automática (GitHub Actions)
 
-La imagen se publica en el **GitHub Container Registry** de la organización:
+**No buildeás ni pusheás a mano.** El workflow `.github/workflows/docker-publish.yml` hace todo en cada push:
 
-```
-ghcr.io/escorial-saic/pallets-api
-```
+| Push a… | Imagen publicada |
+|---------|------------------|
+| `main` | `ghcr.io/escorial-saic/pallets-api:latest` |
+| `dev`  | `ghcr.io/escorial-saic/pallets-api:dev` |
+| (ambas) | `…:sha-<commit>` para trazabilidad |
 
-**Login (una sola vez por máquina).** Necesitás un *Personal Access Token* de GitHub con permiso `write:packages` (GitHub → Settings → Developer settings → Personal access tokens → Tokens classic):
-
-```bash
-echo TU_TOKEN | docker login ghcr.io -u TU_USUARIO_GITHUB --password-stdin
-```
-
-- En el **servidor** (que sólo hace `pull`) alcanza con un token de permiso `read:packages`, salvo que el paquete sea público (entonces no hace falta login).
-- Por defecto el paquete queda **privado** (visible sólo para la organización).
-
----
-
-## 📦 Build y push (en tu máquina)
-
-Desde la raíz del repo:
+GitHub buildea con el `Dockerfile` y sube la imagen a **GitHub Container Registry** usando su `GITHUB_TOKEN` automático — **no hace falta crear ningún token**. Tu único paso es:
 
 ```bash
-docker build -t ghcr.io/escorial-saic/pallets-api:1.0 -t ghcr.io/escorial-saic/pallets-api:latest .
-docker push ghcr.io/escorial-saic/pallets-api:1.0
-docker push ghcr.io/escorial-saic/pallets-api:latest
+git push        # (o el merge a dev/main) — Actions se encarga del build+push
 ```
 
-> Usá siempre un **tag de versión** (`:1.0`, `:1.1`, …) además de `:latest` para poder volver atrás ante un problema.
+Seguí el progreso en la pestaña **Actions** del repo.
+
+### ⚙️ Configuración única en GitHub (una sola vez)
+
+1. **Tras el primer run exitoso**, hacer el paquete **público** para que el server baje sin login:
+   `ESCORIAL-SAIC → Packages → pallets-api → Package settings → Change visibility → Public`.
+2. (Opcional) *Connect repository* en esa misma pantalla, para linkear el package al repo.
+3. Si el workflow falla al pushear por permisos:
+   `repo → Settings → Actions → General → Workflow permissions → Read and write permissions`.
 
 ---
 
@@ -67,11 +62,17 @@ mkdir -p /opt/pallets-api && cd /opt/pallets-api
 # Copiar a esta carpeta:
 #   1) docker-compose.yml
 #   2) appsettings.json real (con la connection string de producción)
+#   3) (opcional) un .env con IMAGE_TAG=dev si este server corre el entorno de prueba
 
-docker compose pull
+docker compose pull            # sin login: el paquete es público
 docker compose up -d
 docker compose logs -f          # verificar que arrancó sin errores (Ctrl+C para salir)
 ```
+
+> **Qué tag corre.** Por defecto el compose usa `:latest` (lo que se publica desde `main`). Para que un server corra el entorno de prueba (`:dev`), poné un archivo `.env` junto al `docker-compose.yml` con:
+> ```
+> IMAGE_TAG=dev
+> ```
 
 Ejemplo de `appsettings.json` en el servidor:
 
@@ -94,10 +95,8 @@ curl http://localhost:8080/
 ## 🔄 Actualizar cuando hagas cambios
 
 ```bash
-# 1) En tu máquina: rebuild + push con un tag nuevo
-docker build -t ghcr.io/escorial-saic/pallets-api:1.1 -t ghcr.io/escorial-saic/pallets-api:latest .
-docker push ghcr.io/escorial-saic/pallets-api:1.1
-docker push ghcr.io/escorial-saic/pallets-api:latest
+# 1) En tu máquina: subir el cambio. GitHub Actions buildea y publica la imagen solo.
+git push                        # push/merge a dev -> tag :dev ; a main -> tag :latest
 
 # 2) En el servidor: traer la nueva imagen y recrear el container
 cd /opt/pallets-api
@@ -105,6 +104,8 @@ docker compose pull
 docker compose up -d            # recrea el container sólo si cambió la imagen
 docker image prune -f           # (opcional) limpiar imágenes viejas sin usar
 ```
+
+> Esperá a que el workflow termine en verde (pestaña **Actions**) antes del `docker compose pull` en el server.
 
 ---
 

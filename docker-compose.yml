@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/escorial-saic/pallets-api:latest
+    image: ghcr.io/escorial-saic/pallets-api:${IMAGE_TAG:-latest}   # IMAGE_TAG=dev en un .env para el entorno de prueba
     container_name: pallets-api
     restart: unless-stopped
     ports:
