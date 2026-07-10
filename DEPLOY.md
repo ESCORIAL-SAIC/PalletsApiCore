@@ -26,12 +26,22 @@ Guía para **containerizar** la Pallets API, **desplegarla** en un servidor Linu
 
 ---
 
-## 🏷️ Configurar el registry
+## 🏷️ Registry: GitHub Container Registry (ghcr.io)
 
-Antes de empezar, en `docker-compose.yml` reemplazá el placeholder `TU_REGISTRY/palletsapi` por tu registry real:
+La imagen se publica en el **GitHub Container Registry** de la organización:
 
-- **Docker Hub:** `tuusuario/palletsapi`
-- **Registry privado:** `host:puerto/palletsapi`
+```
+ghcr.io/escorial-saic/pallets-api
+```
+
+**Login (una sola vez por máquina).** Necesitás un *Personal Access Token* de GitHub con permiso `write:packages` (GitHub → Settings → Developer settings → Personal access tokens → Tokens classic):
+
+```bash
+echo TU_TOKEN | docker login ghcr.io -u TU_USUARIO_GITHUB --password-stdin
+```
+
+- En el **servidor** (que sólo hace `pull`) alcanza con un token de permiso `read:packages`, salvo que el paquete sea público (entonces no hace falta login).
+- Por defecto el paquete queda **privado** (visible sólo para la organización).
 
 ---
 
@@ -40,10 +50,9 @@ Antes de empezar, en `docker-compose.yml` reemplazá el placeholder `TU_REGISTRY
 Desde la raíz del repo:
 
 ```bash
-docker build -t TU_REGISTRY/palletsapi:1.0 -t TU_REGISTRY/palletsapi:latest .
-docker login                     # una sola vez
-docker push TU_REGISTRY/palletsapi:1.0
-docker push TU_REGISTRY/palletsapi:latest
+docker build -t ghcr.io/escorial-saic/pallets-api:1.0 -t ghcr.io/escorial-saic/pallets-api:latest .
+docker push ghcr.io/escorial-saic/pallets-api:1.0
+docker push ghcr.io/escorial-saic/pallets-api:latest
 ```
 
 > Usá siempre un **tag de versión** (`:1.0`, `:1.1`, …) además de `:latest` para poder volver atrás ante un problema.
@@ -53,7 +62,7 @@ docker push TU_REGISTRY/palletsapi:latest
 ## 🚀 Primer despliegue (en el servidor Linux)
 
 ```bash
-mkdir -p /opt/palletsapi && cd /opt/palletsapi
+mkdir -p /opt/pallets-api && cd /opt/pallets-api
 
 # Copiar a esta carpeta:
 #   1) docker-compose.yml
@@ -86,12 +95,12 @@ curl http://localhost:8080/
 
 ```bash
 # 1) En tu máquina: rebuild + push con un tag nuevo
-docker build -t TU_REGISTRY/palletsapi:1.1 -t TU_REGISTRY/palletsapi:latest .
-docker push TU_REGISTRY/palletsapi:1.1
-docker push TU_REGISTRY/palletsapi:latest
+docker build -t ghcr.io/escorial-saic/pallets-api:1.1 -t ghcr.io/escorial-saic/pallets-api:latest .
+docker push ghcr.io/escorial-saic/pallets-api:1.1
+docker push ghcr.io/escorial-saic/pallets-api:latest
 
 # 2) En el servidor: traer la nueva imagen y recrear el container
-cd /opt/palletsapi
+cd /opt/pallets-api
 docker compose pull
 docker compose up -d            # recrea el container sólo si cambió la imagen
 docker image prune -f           # (opcional) limpiar imágenes viejas sin usar

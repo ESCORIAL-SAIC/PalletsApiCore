@@ -1,7 +1,7 @@
 services:
   api:
-    image: TU_REGISTRY/palletsapi:latest   # p.ej. midockerhub/palletsapi:latest
-    container_name: palletsapi
+    image: ghcr.io/escorial-saic/pallets-api:latest
+    container_name: pallets-api
     restart: unless-stopped
     ports:
       - "8080:8080"                          # host:container — ajustar host si querés 80
