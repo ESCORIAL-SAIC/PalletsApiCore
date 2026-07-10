@@ -121,19 +121,27 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
 
 
 
-app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext context) =>
+app.MapGet("api/productos", async (string? tipo, int? numero, string? ean, ESCORIALContext context) =>
 {
     if (string.IsNullOrWhiteSpace(tipo))
         return Results.BadRequest("El tipo de producto es requerido");
     if (!numero.HasValue)
         return Results.BadRequest("El numero de producto es requerido");
 
-    var etiqueta = await context.vp_etiquetas_con_importados
-        .FirstOrDefaultAsync(vp_etiquetas_con_importados => vp_etiquetas_con_importados.tipo == tipo && vp_etiquetas_con_importados.numero == numero.Value);
-    if (etiqueta is null)
+    // La serie puede resolver a varios productos (caso importados); el EAN desambigua cuál es.
+    var candidatos = await (
+        from e in context.vp_etiquetas_con_importados
+        join p in context.producto on e.producto_id equals (Guid?)p.id
+        join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
+        where e.tipo == tipo && e.numero == numero.Value
+        select new { producto = p, udProducto = ud }
+    ).ToListAsync();
+
+    if (candidatos.Count == 0)
         return Results.NotFound("No se encontro el numero de serie");
 
-    if (etiqueta.tipo != "IMPORTADO")
+    // Control final: aplica a todo tipo salvo IMPORTADO (comportamiento existente, por numero de serie).
+    if (tipo != "IMPORTADO")
     {
         var controlFinal = await context.api_pallets_controlfinal
             .FirstOrDefaultAsync(c =>
@@ -146,25 +154,38 @@ app.MapGet("api/productos", async (string? tipo, int? numero, ESCORIALContext co
             return Results.NotFound("El numero de serie no posee control final");
     }
 
-    var producto = await context.producto
-        .FirstOrDefaultAsync(producto => producto.id == etiqueta.producto_id);
-    if (producto is null)
-        return Results.NotFound("No se encontro un producto correspondiente al numero de serie");
+    // Selección del producto. Para tipos que validan EAN (todos salvo COCINA/TERMOTANQUE),
+    // el EAN escaneado elige cuál de los productos de la serie corresponde.
+    var seleccionado = candidatos[0];
+    if (tipo != "COCINA" && tipo != "TERMOTANQUE")
+    {
+        if (string.IsNullOrWhiteSpace(ean))
+            return Results.BadRequest("El código EAN es requerido para este producto");
 
-    var udProducto = await context.ud_producto
-        .FirstOrDefaultAsync(ud_producto => ud_producto.id == producto.boextension_id);
-    if (udProducto is null)
-        return Results.NotFound("No se encontro la unidad de negocio del producto");
+        var match = candidatos.FirstOrDefault(c =>
+            !string.IsNullOrWhiteSpace(c.udProducto.codigogs1) &&
+            string.Equals(ean.Trim(), c.udProducto.codigogs1.Trim(), StringComparison.Ordinal));
+
+        if (match is null)
+        {
+            var algunoConEan = candidatos.Any(c => !string.IsNullOrWhiteSpace(c.udProducto.codigogs1));
+            return Results.BadRequest(algunoConEan
+                ? "El código EAN no coincide con el producto"
+                : "El producto no tiene EAN configurado");
+        }
+
+        seleccionado = match;
+    }
 
     var product = new Product
     {
-        serial = (int)etiqueta.numero!,
-        productId = producto.id,
-        productCode = producto.codigo,
-        description = producto.descripcion,
-        type = etiqueta.tipo,
-        maxCantByPallet = udProducto.cant_x_pallet,
-        isAvailable = await Fun.IsAvailableAsync((int)etiqueta.numero, context)
+        serial = numero.Value,
+        productId = seleccionado.producto.id,
+        productCode = seleccionado.producto.codigo,
+        description = seleccionado.producto.descripcion,
+        type = tipo,
+        maxCantByPallet = seleccionado.udProducto.cant_x_pallet,
+        isAvailable = await Fun.IsAvailableAsync(numero.Value, context)
     };
 
     return Results.Ok(product);
