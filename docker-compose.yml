@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/escorial-saic/pallets-api:${IMAGE_TAG:-latest}   # IMAGE_TAG=dev en un .env para el entorno de prueba
+    image: ghcr.io/escorial-saic/pallets-api:${IMAGE_TAG:-latest}   # IMAGE_TAG en un .env fija el tag (dev, 0.1.0, …)
     container_name: pallets-api
     restart: unless-stopped
     ports:
@@ -9,3 +9,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production    # Development si querés Swagger UI
     volumes:
       - ./appsettings.json:/app/appsettings.json:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

@@ -62,6 +62,9 @@ El login (`POST /api/login`) es una **validación plana de usuario/contraseña**
 | `GET`  | `/api/productos` | Resuelve **un** producto por tipo + número de serie (y **EAN** cuando corresponde). |
 | `POST` | `/api/pallets/asociar-productos` | Asocia y/o desasocia productos de un pallet. |
 | `POST` | `/api/pallets/transferirExpedicion` | Marca uno o más pallets como transferidos a expedición. |
+| `GET`  | `/version` | Devuelve la versión (SemVer) de la API en ejecución. |
+| `GET`  | `/health/live` | *Liveness*: responde `200` si el proceso está vivo (sin dependencias). |
+| `GET`  | `/health/ready` | *Readiness*: responde `200`/`503` según el estado real, incluida la conexión a PostgreSQL. |
 
 ---
 
@@ -185,6 +188,34 @@ Marca como transferidos (`transferir = true`) uno o más pallets identificados p
 **Respuestas:**
 - `204 No Content` → operación exitosa.
 - `400 Bad Request` → `"No hay pallets para transferir."`
+
+---
+
+### `GET /version`
+
+Devuelve la versión SemVer de la API en ejecución. Los tags git los crea el CI automáticamente al mergear, según las labels de la PR (`release:major`/`release:minor`, patch por default); ver [DEPLOY.md](DEPLOY.md).
+
+**Respuestas:**
+- `200 OK` → `{ "version": "0.1.0" }`
+
+---
+
+### `GET /health/live`
+
+*Liveness probe*: indica sólo que el proceso está vivo, sin chequear dependencias.
+
+**Respuestas:**
+- `200 OK` → el proceso responde.
+
+---
+
+### `GET /health/ready`
+
+*Readiness probe*: chequea el estado real, incluida la conexión a PostgreSQL (`AddDbContextCheck`).
+
+**Respuestas:**
+- `200 OK` → `{ "status": "Healthy", "version": "0.1.0", "checks": [{ "name": "db", "status": "Healthy", "description": null }] }`
+- `503 Service Unavailable` → mismo formato con `status`/check `db` en `Unhealthy` (p. ej. DB caída).
 
 ---
 

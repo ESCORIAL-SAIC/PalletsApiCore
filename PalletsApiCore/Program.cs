@@ -1,7 +1,11 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using PalletsApiCore;
 using PalletsApiCore.Models;
 using System.Linq;
+using System.Reflection;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder();
 builder.Configuration
@@ -14,6 +18,9 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<ESCORIALContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("EscorialPostgreSql")));
 
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ESCORIALContext>("db", tags: new[] { "ready" });
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -21,6 +28,38 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+static string AppVersion() =>
+    (Assembly.GetEntryAssembly()?
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? "0.0.0").Split('+')[0];
+
+app.MapGet("/version", () => Results.Ok(new { version = AppVersion() }))
+    .WithName("version")
+    .WithOpenApi();
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var payload = new
+        {
+            status = report.Status.ToString(),
+            version = AppVersion(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description
+            })
+        };
+        await context.Response.WriteAsync(JsonSerializer.Serialize(payload));
+    }
+});
 
 app.MapGet("/", () => Results.Ok("Nothing to see here. Pallets API. There is no front-end. Checkout README.md for more information!"));
 

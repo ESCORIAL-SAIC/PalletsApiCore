@@ -1,0 +1,4 @@
+# Normalizar saltos de línea. Los scripts de shell DEBEN quedar en LF:
+# corren en Linux (GitHub Actions) y con CRLF fallan con errores '\r'.
+* text=auto
+*.sh text eol=lf
