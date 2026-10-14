@@ -115,7 +115,7 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 | Parámetro | Tipo | Requerido | Descripción |
 |-----------|------|-----------|-------------|
 | `tipo` | `string` | Sí | Tipo de etiqueta (`IMPORTADO`, `COCINA`, `TERMOTANQUE`, `PEABODY`, …). |
-| `numero` | `int` | Sí | Número de serie de la etiqueta. |
+| `numero` | `string` | Sí | Número de serie de la etiqueta. |
 | `ean` | `string` | Condicional | Código EAN/GS1 escaneado. **Requerido para todos los tipos excepto `COCINA` y `TERMOTANQUE`.** |
 
 **🏷️ Validación de EAN (productos importados).** Un mismo número de serie importado puede corresponder a **varios productos distintos**, diferenciados únicamente por su código EAN (GS1). Por eso, para los tipos que validan EAN, el `ean` escaneado se usa para **seleccionar cuál** de los productos de esa serie corresponde — no solo para validarlo contra uno resuelto arbitrariamente. Los tipos `COCINA` y `TERMOTANQUE` quedan desambiguados por el propio `tipo` y no requieren EAN.
