@@ -20,12 +20,51 @@ namespace PalletsApiCore
             return int.TryParse(s, out serie);
         }
 
-        public static async Task<bool> IsAvailableAsync(int serial, Guid productoId, ESCORIALContext context)
+        // PEABODY: la serie es el codigo EAN13/DUN14 completo (solo digitos, sin recortar ni parsear a int).
+        public static bool TryNormalizarCodigoPeabody(string? numero, out string codigo)
+        {
+            codigo = "";
+            var s = numero?.Trim();
+            if (string.IsNullOrEmpty(s) || (s.Length != 13 && s.Length != 14) || !s.All(c => c is >= '0' and <= '9'))
+                return false;
+            codigo = s;
+            return true;
+        }
+
+        // ponytail: solo resuelve por ud_producto.codigogs1 (EAN); el modelo no tiene columna DUN. Sin control final (es por numero int).
+        public static async Task<IResult> GetProductoPeabodyAsync(string? numero, ESCORIALContext context)
+        {
+            if (!TryNormalizarCodigoPeabody(numero, out var codigo))
+                return Results.BadRequest("El numero de producto no es valido");
+
+            var c = await (
+                from p in context.producto
+                join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
+                where ud.codigogs1 == codigo
+                select new { p, ud }
+            ).FirstOrDefaultAsync();
+
+            if (c is null)
+                return Results.NotFound("No se encontro el numero de serie");
+
+            return Results.Ok(new Product
+            {
+                serial = codigo,
+                productId = c.p.id,
+                productCode = c.p.codigo,
+                description = c.p.descripcion,
+                type = "PEABODY",
+                maxCantByPallet = c.ud.cant_x_pallet,
+                isAvailable = await IsAvailableAsync(codigo, c.p.id, context)
+            });
+        }
+
+        public static async Task<bool> IsAvailableAsync(string serial, Guid productoId, ESCORIALContext context)
         {
             // Una misma serie puede resolver a varios productos (caso importados, desambiguado por EAN),
             // por eso la disponibilidad se evalua por la combinacion serie + producto, no solo por serie.
             var exists = await context.cenker_prod_x_pallet
-                .AnyAsync(c => c.serie == serial.ToString() && c.producto_id == productoId && c.activo);
+                .AnyAsync(c => c.serie == serial && c.producto_id == productoId && c.activo);
             return !exists;
         }
     }

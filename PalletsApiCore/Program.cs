@@ -130,7 +130,9 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
     )
     .AsNoTracking()
     .ToListAsync();
-    var series = productosBase.Select(x => int.Parse(x.Serie)).Distinct().ToList();
+    var series = productosBase
+        .Select(x => int.TryParse(x.Serie, out var n) ? (int?)n : null)
+        .OfType<int>().Distinct().ToList();
     var productoIds = productosBase.Select(x => x.ProductoId).Distinct().ToList();
     var etiquetas = await context.vp_etiquetas_con_importados
         .Where(v => series.Contains((int)v.numero!) && productoIds.Contains((Guid)v.producto_id!))
@@ -138,12 +140,13 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
         .ToListAsync();
     var result = productosBase.Select(x =>
     {
-        var etiqueta = etiquetas.FirstOrDefault(e =>
-            e.numero == int.Parse(x.Serie) && e.producto_id == x.ProductoId);
+        var etiqueta = int.TryParse(x.Serie, out var n)
+            ? etiquetas.FirstOrDefault(e => e.numero == n && e.producto_id == x.ProductoId)
+            : null;
 
         return new Product
         {
-            serial = int.Parse(x.Serie),
+            serial = x.Serie,
             productId = x.ProductoId,
             productCode = x.codigo,
             description = x.descripcion,
@@ -166,6 +169,9 @@ app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ES
         return Results.BadRequest("El tipo de producto es requerido");
     if (string.IsNullOrWhiteSpace(numero))
         return Results.BadRequest("El numero de producto es requerido");
+
+    if (tipo == "PEABODY")
+        return await Fun.GetProductoPeabodyAsync(numero, context);
 
     if (!Fun.TryNormalizarSerie(numero, tipo, out var serie))
         return Results.BadRequest("El numero de producto no es valido");
@@ -221,13 +227,13 @@ app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ES
 
     var product = new Product
     {
-        serial = serie,
+        serial = serie.ToString(),
         productId = seleccionado.producto.id,
         productCode = seleccionado.producto.codigo,
         description = seleccionado.producto.descripcion,
         type = tipo,
         maxCantByPallet = seleccionado.udProducto.cant_x_pallet,
-        isAvailable = await Fun.IsAvailableAsync(serie, seleccionado.producto.id, context)
+        isAvailable = await Fun.IsAvailableAsync(serie.ToString(), seleccionado.producto.id, context)
     };
 
     return Results.Ok(product);
