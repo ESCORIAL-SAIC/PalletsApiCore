@@ -40,22 +40,25 @@ namespace PalletsApiCore
             var c = await (
                 from p in context.producto
                 join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
-                where ud.codigogs1 == codigo
+                where ud.codigogs1 != null && ud.codigogs1.Trim() == codigo
                 select new { p, ud }
-            ).FirstOrDefaultAsync();
+            ).Take(2).ToListAsync();
 
-            if (c is null)
+            if (c.Count == 0)
                 return Results.NotFound("No se encontro el numero de serie");
+            if (c.Count > 1)
+                return Results.Conflict("El codigo corresponde a mas de un producto");
+            var r = c[0];
 
             return Results.Ok(new Product
             {
                 serial = codigo,
-                productId = c.p.id,
-                productCode = c.p.codigo,
-                description = c.p.descripcion,
+                productId = r.p.id,
+                productCode = r.p.codigo,
+                description = r.p.descripcion,
                 type = "PEABODY",
-                maxCantByPallet = c.ud.cant_x_pallet,
-                isAvailable = await IsAvailableAsync(codigo, c.p.id, context)
+                maxCantByPallet = r.ud.cant_x_pallet,
+                isAvailable = await IsAvailableAsync(codigo, r.p.id, context)
             });
         }
 
