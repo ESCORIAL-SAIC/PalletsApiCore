@@ -114,11 +114,13 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 
 | Parámetro | Tipo | Requerido | Descripción |
 |-----------|------|-----------|-------------|
-| `tipo` | `string` | Sí | Tipo de etiqueta (`IMPORTADO`, `COCINA`, `TERMOTANQUE`, …). |
+| `tipo` | `string` | Sí | Tipo de etiqueta (`IMPORTADO`, `COCINA`, `TERMOTANQUE`, `PEABODY`, …). |
 | `numero` | `int` | Sí | Número de serie de la etiqueta. |
 | `ean` | `string` | Condicional | Código EAN/GS1 escaneado. **Requerido para todos los tipos excepto `COCINA` y `TERMOTANQUE`.** |
 
 **🏷️ Validación de EAN (productos importados).** Un mismo número de serie importado puede corresponder a **varios productos distintos**, diferenciados únicamente por su código EAN (GS1). Por eso, para los tipos que validan EAN, el `ean` escaneado se usa para **seleccionar cuál** de los productos de esa serie corresponde — no solo para validarlo contra uno resuelto arbitrariamente. Los tipos `COCINA` y `TERMOTANQUE` quedan desambiguados por el propio `tipo` y no requieren EAN.
+
+**🧀 `PEABODY`.** `numero` es el código EAN13 o DUN14 completo (solo dígitos, 13 o 14, sin recortar). Se resuelve por `codigogs1` (no usa la vista de etiquetas ni requiere `ean`, ni control final). Hoy solo matchea EAN/`codigogs1`; el DUN14 requiere que esté guardado en esa columna. `serial` se devuelve como `string`.
 
 **Respuestas:**
 
@@ -132,6 +134,7 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 | `400 Bad Request` | `"El producto no tiene EAN configurado"` | El producto no tiene EAN cargado en el sistema. |
 | `404 Not Found` | `"No se encontro el numero de serie"` | No existe la etiqueta para ese `tipo` + `numero`. |
 | `404 Not Found` | `"El numero de serie no posee control final"` | Falta control final (aplica a todo tipo **salvo** `IMPORTADO`). |
+| `409 Conflict` | `"El codigo corresponde a mas de un producto"` | Solo `PEABODY`: el código coincide con más de un producto. |
 
 **Ejemplo:**
 ```
@@ -151,12 +154,12 @@ Asocia y/o desasocia productos de un pallet en una única operación transaccion
   "usuario": "usuarioLogueado",
   "products": [
     {
-      "serial": 12345,
+      "serial": "12345",
       "productId": "269ef17c-b822-43dd-a6f1-668d7f40e284",
       "deleted": false
     },
     {
-      "serial": 54321,
+      "serial": "54321",
       "productId": "957fc1cf-fbce-421d-af8a-54af3d60fc7c",
       "deleted": true
     }
@@ -225,7 +228,7 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `serial` | `int` | Número de serie de la etiqueta. |
+| `serial` | `string` | Número de serie de la etiqueta. Para `PEABODY`, el código EAN13/DUN14 completo. |
 | `productId` | `guid` | Identificador del producto. |
 | `productCode` | `string` | Código interno del producto. |
 | `description` | `string` | Descripción del producto. |
