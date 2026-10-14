@@ -167,6 +167,14 @@ app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ES
     if (string.IsNullOrWhiteSpace(numero))
         return Results.BadRequest("El numero de producto es requerido");
 
+    if (tipo == "PEABODY")
+    {
+        var peabody = await Fun.ResolverPeabodyAsync(numero, context);
+        return peabody is null
+            ? Results.NotFound("No se encontro el producto para el codigo")
+            : Results.Ok(peabody);
+    }
+
     if (!Fun.TryNormalizarSerie(numero, tipo, out var serie))
         return Results.BadRequest("El numero de producto no es valido");
 
