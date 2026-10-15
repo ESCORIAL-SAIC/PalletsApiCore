@@ -246,7 +246,8 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 | `isAvailable` | `bool` | `true` si la serie no está ya asociada activamente a un pallet. |
 | `deleted` | `bool` | Solo en requests: marca la desasociación. |
 | `esDun` | `bool?` | Solo `PEABODY`: el código escaneado es DUN. |
-| `unidades` | `int?` | Solo `PEABODY`: unidades por bulto si es DUN, `1` si es EAN. |
+| `unidades` | `int?` | Solo `PEABODY`: unidades que representa un ítem del código (por bulto si es DUN, `1` si es EAN). |
+| `cantidad` | `int?` | Solo `PEABODY` en `GET /api/pallets/productos`: filas activas de ese código en el pallet. |
 
 > `serial` es string: para `PEABODY` es el EAN 13 / DUN 14 (no entra en `int`). **Cambio de contrato** (label `release:major`). Filas `PEABODY` en `api/pallets/productos` devuelven `type: "PEABODY"`.
 
@@ -269,7 +270,7 @@ Mauricio
 
 - Una fila activa de `web.cenker_prod_x_pallet` = **una unidad**. Un EAN agrega 1 fila; un DUN agrega N filas (N = `Fun.CalcularUnidades`, `unidadesporbulto` nulo/0 cae a 1 y se loguea warning). Todas con la misma `serie` (el código escaneado). No se toca el esquema.
 - `POST api/pallets/asociar-productos`: valida `ya_asociadas + unidades <= ud_producto.cant_x_pallet` por producto, dentro de la transacción y todo o nada. Si no entra: **422** (`title: ITEM_QUOTA_REACHED`) y no se carga nada. Las desasociaciones del mismo request se restan antes de validar. `cant_x_pallet` nulo/0 = rechaza (no hay tope válido).
-- `GET api/pallets/productos`: Peabody viene **agrupado**, una línea por producto con `unidades` = cantidad acumulada. Otros tipos: una línea por serie, sin cambios.
+- `GET api/pallets/productos`: Peabody viene **agrupado por producto + código**: una línea por (producto, `serial`). `serial` = ese código (EAN o DUN), `cantidad` = filas activas de ese código, `esDun` según coincida con `codigo_dun` y `unidades` = unidades que representa un ítem de ese código (DUN = unidades por bulto, EAN = 1). Un mismo producto con EAN y DUN da 2 líneas. El cliente desasocia con el `serial` exacto de la línea. **Cambio de contrato (menor):** antes una línea por producto con `unidades` = cantidad acumulada; ahora `unidades` es por ítem y la cantidad va en `cantidad`. Otros tipos: una línea por serie, sin cambios.
 - Un pallet **puede mezclar** Peabody con otros tipos: el cupo es por producto, no por pallet.
 - Desasociar Peabody envía el mismo código y baja las unidades que representa: **DUN baja N filas activas** (las más recientes del código/producto, con una auditoría por fila), **EAN baja 1**. N se calcula en servidor igual que al asociar. Si hay menos filas activas que N: **422** (`title: ITEM_UNITS_NOT_AVAILABLE`), rollback y no se baja nada.
 - En `asociar-productos` la rama Peabody se decide por `type == "PEABODY"` del ítem (no por la forma del serial). Se hace `Trim()` del `serial`; si el ítem es PEABODY y el serial no es numérico de 13/14 dígitos: **400** y no se carga nada. Ítems de otro tipo siguen el camino genérico sin cambios.

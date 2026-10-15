@@ -73,6 +73,34 @@ namespace PalletsApiCore
             return error;
         }
 
+        public sealed record PeabodyFila(string Serie, Guid ProductoId, string Codigo, string Descripcion,
+            int CantXPallet, string? CodigoDun, decimal? UnidadesPorBulto);
+
+        // GET api/pallets/productos: una linea por (producto, serie). cantidad = filas activas de ese codigo;
+        // esDun/unidades = lo que representa UN item de ese codigo (DUN = unidades por bulto, EAN = 1).
+        public static List<Product> LineasPeabody(IEnumerable<PeabodyFila> filasActivas) =>
+            filasActivas
+                .GroupBy(f => (f.ProductoId, f.Serie))
+                .Select(g =>
+                {
+                    var f = g.First();
+                    var esDun = !string.IsNullOrEmpty(f.CodigoDun) && f.Serie == f.CodigoDun;
+                    return new Product
+                    {
+                        serial = f.Serie,
+                        productId = f.ProductoId,
+                        productCode = f.Codigo,
+                        description = f.Descripcion,
+                        type = "PEABODY",
+                        maxCantByPallet = f.CantXPallet,
+                        isAvailable = true,
+                        esDun = esDun,
+                        unidades = CalcularUnidades(esDun, f.UnidadesPorBulto),
+                        cantidad = g.Count()
+                    };
+                })
+                .ToList();
+
         public sealed class PeabodyMatch
         {
             public producto Producto { get; init; } = null!;

@@ -125,7 +125,9 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
             ProductoId = p.id,
             p.codigo,
             p.descripcion,
-            u.cant_x_pallet
+            u.cant_x_pallet,
+            u.codigo_dun,
+            p.unidadesporbulto
         }
     )
     .AsNoTracking()
@@ -138,20 +140,9 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
         .Where(v => series.Contains((int)v.numero!) && productoIds.Contains((Guid)v.producto_id!))
         .AsNoTracking()
         .ToListAsync();
-    // PEABODY: una linea por producto con la cantidad acumulada (una fila activa = una unidad).
-    var peabodyAgrupado = productosBase.Where(x => Fun.EsCodigoPeabody(x.Serie))
-        .GroupBy(x => x.ProductoId)
-        .Select(g => new Product
-        {
-            serial = g.First().Serie,
-            productId = g.Key,
-            productCode = g.First().codigo,
-            description = g.First().descripcion,
-            type = "PEABODY",
-            maxCantByPallet = g.First().cant_x_pallet,
-            isAvailable = true,
-            unidades = g.Count()
-        });
+    // PEABODY: una linea por (producto, codigo); cantidad = filas activas de ese codigo.
+    var peabodyAgrupado = Fun.LineasPeabody(productosBase.Where(x => Fun.EsCodigoPeabody(x.Serie))
+        .Select(x => new Fun.PeabodyFila(x.Serie, x.ProductoId, x.codigo, x.descripcion, x.cant_x_pallet, x.codigo_dun, x.unidadesporbulto)));
     var result = productosBase.Where(x => !Fun.EsCodigoPeabody(x.Serie)).Select(x =>
     {
         var peabody = Fun.EsCodigoPeabody(x.Serie);
