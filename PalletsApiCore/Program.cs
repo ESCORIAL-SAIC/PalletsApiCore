@@ -191,7 +191,7 @@ app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ES
         var esDun = m0.ud.codigo_dun == codigo;
         return Results.Ok(new Product
         {
-            serial = 0,
+            serial = codigo,
             productId = m0.producto.id,
             productCode = m0.producto.codigo,
             description = m0.producto.descripcion,

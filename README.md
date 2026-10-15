@@ -138,7 +138,7 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
 ```
 
-**Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial = 0`, `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
+**Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial` = el código escaneado (EAN/DUN), `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
 
 | Código | Mensaje | Causa |
 |--------|---------|-------|
