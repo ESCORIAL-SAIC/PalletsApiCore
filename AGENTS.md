@@ -4,7 +4,7 @@
 
 ## Commands
 - Run: `dotnet run --project PalletsApiCore` (Swagger at `/swagger`, Development only).
-- Tests (xUnit, only `Fun.TryNormalizarSerie` covered): `dotnet test PalletsApiCore.sln`; single: `dotnet test PalletsApiCore.Tests --filter "FullyQualifiedName~Importado_20Digitos"`.
+- Tests (xUnit, helpers puros de `Fun`; sin DB ni endpoints): `dotnet test PalletsApiCore.sln`; single: `dotnet test PalletsApiCore.Tests --filter "FullyQualifiedName~Importado_20Digitos"`.
 - Version scripts have own check: `bash .github/scripts/test-version.sh` (CI runs it before dotnet tests).
 
 ## Reglas obligatorias

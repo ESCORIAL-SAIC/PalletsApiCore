@@ -327,14 +327,16 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
                 from p in context.producto
                 join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
                 where p.id == item.productId
-                select new { p.unidadesporbulto, ud.codigo_dun }
+                select new { p.unidadesporbulto, ud.codigo_dun, ud.codigogs1 }
             ).AsNoTracking().FirstOrDefaultAsync();
             if (datos is null)
                 return Results.NotFound($"No se encontro el producto {item.productId}.");
-            var esDun = !string.IsNullOrEmpty(datos.codigo_dun) && datos.codigo_dun == item.serial;
-            if (esDun && (datos.unidadesporbulto ?? 0) <= 0)
+            // El codigo debe ser el EAN o el DUN del producto indicado (aplica a asociar y desasociar).
+            if (!Fun.TryUnidadesPeabody(item.serial, datos.codigogs1, datos.codigo_dun, datos.unidadesporbulto, out var unidades))
+                return Results.BadRequest($"El codigo {item.serial} no corresponde al producto {item.productCode ?? item.productId.ToString()} (no coincide con su EAN ni DUN). No se cargo nada.");
+            if (item.serial == datos.codigo_dun && (datos.unidadesporbulto ?? 0) <= 0)
                 app.Logger.LogWarning("Producto {ProductoId} sin unidadesporbulto valido; se usa 1", item.productId);
-            unidadesPorItem[item] = Fun.CalcularUnidades(esDun, datos.unidadesporbulto);
+            unidadesPorItem[item] = unidades;
         }
 
         // Desasociar primero: resta del conteo antes de validar el cupo.
@@ -344,10 +346,19 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
             var filas = existentes.Where(e => e.serie == item.serial && e.activo && !aDesactivar.Contains(e));
             if (Fun.EsCodigoPeabody(item.serial))
             {
-                // PEABODY: baja UNA fila (la mas reciente) por item deleted.
+                // PEABODY: baja N filas (las mas recientes del codigo/producto): DUN = unidades del bulto, EAN = 1.
                 var candidatas = filas.Where(e => e.producto_id == item.productId).ToList();
-                if (candidatas.Count > 0)
-                    aDesactivar.Add(candidatas[Fun.IndiceMasReciente(candidatas.Select(c => c.fecha_alta).ToList())]);
+                var unidades = unidadesPorItem[item];
+                var indices = Fun.IndicesMasRecientes(candidatas.Select(c => c.fecha_alta).ToList(), unidades);
+                if (indices is null)
+                {
+                    await transaction.RollbackAsync();
+                    return Results.Problem(
+                        title: "ITEM_UNITS_NOT_AVAILABLE",
+                        detail: $"No se puede desasociar {item.serial} del producto {item.productCode}: representa {unidades} unidades y el pallet solo tiene {candidatas.Count} activas. No se cambio nada.",
+                        statusCode: StatusCodes.Status422UnprocessableEntity);
+                }
+                aDesactivar.AddRange(indices.Select(i => candidatas[i]));
                 continue;
             }
             else

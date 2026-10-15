@@ -39,25 +39,34 @@ namespace PalletsApiCore
         public static bool EsCodigoPeabody(string? c) =>
             c is { Length: 13 or 14 } && c.All(char.IsAsciiDigit);
 
-        // PEABODY: filas a crear por codigo escaneado. DUN = unidades por bulto, EAN = 1. Se calcula en servidor.
-        public static int UnidadesPeabody(string? serial, string? codigoDun, decimal? unidadesPorBulto) =>
-            CalcularUnidades(!string.IsNullOrEmpty(codigoDun) && serial == codigoDun, unidadesPorBulto);
-
-        // La caja entra entera o no entra (no se parte). ponytail: sin lock en DB, dos requests simultaneos pueden pasar el tope.
-        public static bool EntraEnPallet(int activos, int unidades, int tope) => activos + unidades <= tope;
-
-        // Indice de la fila mas reciente. fecha_alta es string dependiente de cultura: se parsea,
-        // lo no parseable queda primero y el empate lo gana el ultimo de la lista.
-        public static int IndiceMasReciente(IReadOnlyList<string?> fechasAlta)
+        // PEABODY: valida que el codigo escaneado sea el EAN (codigogs1) o el DUN (codigo_dun) del producto
+        // y calcula las unidades que representa. DUN = unidades por bulto, EAN = 1. Se calcula en servidor.
+        // Si no coincide con ninguno devuelve false (el endpoint rechaza sin cargar ni bajar nada).
+        public static bool TryUnidadesPeabody(string? serial, string? codigogs1, string? codigoDun,
+            decimal? unidadesPorBulto, out int unidades)
         {
-            var mejor = -1;
-            var mejorFecha = DateTime.MinValue;
-            for (var i = 0; i < fechasAlta.Count; i++)
-            {
-                var f = DateTime.TryParse(fechasAlta[i], out var d) ? d : DateTime.MinValue;
-                if (mejor < 0 || f >= mejorFecha) { mejor = i; mejorFecha = f; }
-            }
-            return mejor;
+            unidades = 0;
+            if (string.IsNullOrEmpty(serial))
+                return false;
+            var esDun = !string.IsNullOrEmpty(codigoDun) && serial == codigoDun;
+            if (!esDun && !(!string.IsNullOrEmpty(codigogs1) && serial == codigogs1))
+                return false;
+            unidades = CalcularUnidades(esDun, unidadesPorBulto);
+            return true;
+        }
+
+        // Indices de las `cantidad` filas mas recientes (por fecha_alta). null si hay menos filas que `cantidad`
+        // (no se baja nada parcial). fecha_alta es string dependiente de cultura: se parsea, lo no parseable
+        // queda como mas antiguo y el empate lo gana el ultimo de la lista.
+        public static List<int>? IndicesMasRecientes(IReadOnlyList<string?> fechasAlta, int cantidad)
+        {
+            if (cantidad < 0 || fechasAlta.Count < cantidad)
+                return null;
+            return Enumerable.Range(0, fechasAlta.Count)
+                .OrderByDescending(i => DateTime.TryParse(fechasAlta[i], out var d) ? d : DateTime.MinValue)
+                .ThenByDescending(i => i)
+                .Take(cantidad)
+                .ToList();
         }
 
         public static async Task<bool> IsAvailableAsync(string serial, Guid productoId, ESCORIALContext context)
