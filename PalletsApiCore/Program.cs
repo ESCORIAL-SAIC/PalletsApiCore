@@ -138,7 +138,21 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
         .Where(v => series.Contains((int)v.numero!) && productoIds.Contains((Guid)v.producto_id!))
         .AsNoTracking()
         .ToListAsync();
-    var result = productosBase.Select(x =>
+    // PEABODY: una linea por producto con la cantidad acumulada (una fila activa = una unidad).
+    var peabodyAgrupado = productosBase.Where(x => Fun.EsCodigoPeabody(x.Serie))
+        .GroupBy(x => x.ProductoId)
+        .Select(g => new Product
+        {
+            serial = g.First().Serie,
+            productId = g.Key,
+            productCode = g.First().codigo,
+            description = g.First().descripcion,
+            type = "PEABODY",
+            maxCantByPallet = g.First().cant_x_pallet,
+            isAvailable = true,
+            unidades = g.Count()
+        });
+    var result = productosBase.Where(x => !Fun.EsCodigoPeabody(x.Serie)).Select(x =>
     {
         var peabody = Fun.EsCodigoPeabody(x.Serie);
         var etiqueta = peabody ? null : etiquetas.FirstOrDefault(e =>
@@ -154,7 +168,7 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
             maxCantByPallet = x.cant_x_pallet,
             isAvailable = true
         };
-    }).ToList();
+    }).Concat(peabodyAgrupado).ToList();
 
     return Results.Ok(result);
 })
@@ -304,82 +318,73 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
             .Where(p => p.pallet_id == palletId.id)
             .ToListAsync();
 
-        static bool EsPeabody(Product p) => p.type == "PEABODY" || Fun.EsCodigoPeabody(p.serial);
-
-        // PEABODY: baja UNA fila (la mas reciente) por item deleted. Las bajas van antes que las altas.
-        foreach (var item in productosDesasociar.Where(EsPeabody))
-        {
-            var candidatas = existentes
-                .Where(e => e.serie == item.serial && e.producto_id == item.productId && e.activo)
-                .ToList();
-            if (candidatas.Count == 0)
-                continue;
-            var pXp = candidatas[Fun.IndiceMasReciente(candidatas.Select(c => c.fecha_alta).ToList())];
-            pXp.activo = false;
-            pXp.fecha_modificacion = DateTime.Now.ToString();
-            context.cenker_pallets_auditoria.Add(new cenker_pallets_auditoria
-            {
-                id = Guid.NewGuid(),
-                fecha = DateTime.Now,
-                evento = "DESASOCIAR PRODUCTO",
-                objeto = "web.cenker_prod_x_pallet",
-                elemento_asociado = pXp.id,
-                valor_anterior = pXp.serie,
-                valor_actual = string.Empty,
-                usuario = pallet.Usuario
-            });
-        }
-
-        foreach (var item in productosAsociar.Where(EsPeabody))
+        // Peabody: cada codigo (EAN=1, DUN=N unidades) se guarda como N filas activas con la misma serie.
+        // Productos de otros tipos siguen una fila por serie.
+        var unidadesPorItem = new Dictionary<Product, int>();
+        foreach (var item in pallet.Products.Where(p => Fun.EsCodigoPeabody(p.serial)))
         {
             var datos = await (
                 from p in context.producto
                 join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
                 where p.id == item.productId
-                select new { ud.codigo_dun, ud.cant_x_pallet, p.unidadesporbulto }
-            ).FirstOrDefaultAsync();
+                select new { p.unidadesporbulto, ud.codigo_dun }
+            ).AsNoTracking().FirstOrDefaultAsync();
             if (datos is null)
-                return Results.BadRequest("No se encontro el producto " + item.productId + ".");
+                return Results.NotFound($"No se encontro el producto {item.productId}.");
+            var esDun = !string.IsNullOrEmpty(datos.codigo_dun) && datos.codigo_dun == item.serial;
+            if (esDun && (datos.unidadesporbulto ?? 0) <= 0)
+                app.Logger.LogWarning("Producto {ProductoId} sin unidadesporbulto valido; se usa 1", item.productId);
+            unidadesPorItem[item] = Fun.CalcularUnidades(esDun, datos.unidadesporbulto);
+        }
 
-            var unidades = Fun.UnidadesPeabody(item.serial, datos.codigo_dun, datos.unidadesporbulto);
-            var activos = existentes.Count(e => e.producto_id == item.productId && e.activo);
-            if (!Fun.EntraEnPallet(activos, unidades, datos.cant_x_pallet))
-                return Results.Conflict("ITEM_QUOTA_REACHED: el codigo " + item.serial + " (" + unidades + " unidades) no entra en el pallet (" + activos + "/" + datos.cant_x_pallet + ").");
-
-            for (var i = 0; i < unidades; i++)
+        // Desasociar primero: resta del conteo antes de validar el cupo.
+        var aDesactivar = new List<cenker_prod_x_pallet>();
+        foreach (var item in productosDesasociar)
+        {
+            var filas = existentes.Where(e => e.serie == item.serial && e.activo && !aDesactivar.Contains(e));
+            if (Fun.EsCodigoPeabody(item.serial))
             {
-                var pXp = new cenker_prod_x_pallet
-                {
-                    id = Guid.NewGuid(),
-                    pallet_id = palletId.id,
-                    producto_id = item.productId,
-                    activo = true,
-                    fecha_alta = DateTime.Now.ToString(),
-                    fecha_modificacion = DateTime.Now.ToString(),
-                    serie = item.serial
-                };
-                context.cenker_prod_x_pallet.Add(pXp);
-                existentes.Add(pXp);
-                context.cenker_pallets_auditoria.Add(new cenker_pallets_auditoria
-                {
-                    id = Guid.NewGuid(),
-                    fecha = DateTime.Now,
-                    evento = "ASOCIAR PRODUCTO",
-                    objeto = "web.cenker_prod_x_pallet",
-                    elemento_asociado = pXp.id,
-                    valor_anterior = string.Empty,
-                    valor_actual = pXp.serie,
-                    usuario = pallet.Usuario
-                });
+                // PEABODY: baja UNA fila (la mas reciente) por item deleted.
+                var candidatas = filas.Where(e => e.producto_id == item.productId).ToList();
+                if (candidatas.Count > 0)
+                    aDesactivar.Add(candidatas[Fun.IndiceMasReciente(candidatas.Select(c => c.fecha_alta).ToList())]);
+                continue;
+            }
+            else
+                filas = filas.Take(1);
+            aDesactivar.AddRange(filas.ToList());
+        }
+
+        // Cupo por producto (ud_producto.cant_x_pallet), todo o nada.
+        var nuevasPorProducto = productosAsociar.Where(i => Fun.EsCodigoPeabody(i.serial))
+            .GroupBy(i => i.productId);
+        foreach (var g in nuevasPorProducto)
+        {
+            var ya = existentes.Count(e => e.activo && e.producto_id == g.Key && !aDesactivar.Contains(e));
+            var pedidas = g.Sum(i => unidadesPorItem[i]);
+            var tope = await (
+                from p in context.producto
+                join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
+                where p.id == g.Key
+                select ud.cant_x_pallet
+            ).FirstOrDefaultAsync();
+            if (!Fun.CabeEnPallet(ya, pedidas, tope))
+            {
+                await transaction.RollbackAsync();
+                return Results.Problem(
+                    title: "ITEM_QUOTA_REACHED",
+                    detail: $"El pallet ya tiene {ya} unidades del producto {g.First().productCode}; agregar {pedidas} supera el maximo de {tope}. No se cargo nada.",
+                    statusCode: StatusCodes.Status422UnprocessableEntity);
             }
         }
 
-        foreach (var item in productosAsociar.Where(p => !EsPeabody(p)))
+        foreach (var item in productosAsociar)
         {
-            var exists = existentes
-                .FirstOrDefault(e => e.serie == item.serial && e.activo) is not null;
-            if (exists)
+            var peabody = Fun.EsCodigoPeabody(item.serial);
+            if (!peabody && existentes.Any(e => e.serie == item.serial && e.activo))
                 continue;
+            for (var i = 0; i < (peabody ? unidadesPorItem[item] : 1); i++)
+            {
             var pXp = new cenker_prod_x_pallet
             {
                 id = Guid.NewGuid(),
@@ -404,14 +409,11 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
                 usuario = pallet.Usuario
             };
             context.cenker_pallets_auditoria.Add(auditoria);
+            }
         }
 
-        foreach (var item in productosDesasociar.Where(p => !EsPeabody(p)))
+        foreach (var pXp in aDesactivar)
         {
-            var pXp = existentes
-                .FirstOrDefault(e => e.serie == item.serial && e.activo);
-            if (pXp is null)
-                continue;
             pXp.activo = false;
             pXp.fecha_modificacion = DateTime.Now.ToString();
             var auditoria = new cenker_pallets_auditoria

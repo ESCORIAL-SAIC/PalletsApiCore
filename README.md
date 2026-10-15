@@ -138,7 +138,7 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
 ```
 
-**Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial` = código escaneado, `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
+**Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial` = el código escaneado (EAN/DUN), `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
 
 | Código | Mensaje | Causa |
 |--------|---------|-------|
@@ -179,9 +179,6 @@ Asocia y/o desasocia productos de un pallet en una única operación transaccion
 - `204 No Content` → operación exitosa.
 - `400 Bad Request` → `"El codigo de pallet es requerido."` / `"No hay productos para asociar."` / error no controlado (rollback).
 - `404 Not Found` → `"No se encontro el pallet."`
-- `409 Conflict` → `ITEM_QUOTA_REACHED` (PEABODY): la caja no entra entera en `cant_x_pallet` (rollback, no se parte).
-
-**PEABODY (EAN/DUN):** el mismo código se repite por unidad, sin dedup por serie. Una fila `cenker_prod_x_pallet` por unidad: EAN = 1, DUN = `unidadesporbulto` (calculado en servidor, se ignora `unidades` del cliente). Cada alta/baja se audita. Desasociar baja **una** fila (la más reciente) del par serie + producto por ítem `deleted`. Las bajas se procesan antes que las altas. Tope: activos del producto + unidades de la caja <= `cant_x_pallet`. Sin lock en DB: dos requests simultáneos podrían pasar el tope.
 
 > Este endpoint **confía** en los datos que llegan en el payload (los obtenidos previamente vía `GET /api/productos`); no vuelve a validar serie ni EAN. La asociación es idempotente: si la serie ya está activa en el pallet, se ignora.
 
@@ -266,3 +263,12 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 ## ✍️ Autor
 
 Mauricio
+
+## Peabody: tope por pallet
+
+- Una fila activa de `web.cenker_prod_x_pallet` = **una unidad**. Un EAN agrega 1 fila; un DUN agrega N filas (N = `Fun.CalcularUnidades`, `unidadesporbulto` nulo/0 cae a 1 y se loguea warning). Todas con la misma `serie` (el código escaneado). No se toca el esquema.
+- `POST api/pallets/asociar-productos`: valida `ya_asociadas + unidades <= ud_producto.cant_x_pallet` por producto, dentro de la transacción y todo o nada. Si no entra: **422** (`title: ITEM_QUOTA_REACHED`) y no se carga nada. Las desasociaciones del mismo request se restan antes de validar. `cant_x_pallet` nulo/0 = rechaza (no hay tope válido).
+- `GET api/pallets/productos`: Peabody viene **agrupado**, una línea por producto con `unidades` = cantidad acumulada. Otros tipos: una línea por serie, sin cambios.
+- Un pallet **puede mezclar** Peabody con otros tipos: el cupo es por producto, no por pallet.
+- Desasociar Peabody envía el mismo código (DUN baja N filas, EAN 1).
+- Límite: sin bloqueo de concurrencia; dos requests simultáneos al mismo pallet podrían pasarse del tope.
