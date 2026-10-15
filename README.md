@@ -114,9 +114,9 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 
 | Parámetro | Tipo | Requerido | Descripción |
 |-----------|------|-----------|-------------|
-| `tipo` | `string` | Sí | Tipo de etiqueta (`IMPORTADO`, `COCINA`, `TERMOTANQUE`, …). |
-| `numero` | `int` / `string` | Sí | Número de serie de la etiqueta. Con `tipo=PEABODY` es el código **EAN (13 dígitos) o DUN (14 dígitos)**, solo numérico; otro formato devuelve `400`. |
-| `ean` | `string` | Condicional | Código EAN/GS1 escaneado. **Requerido para todos los tipos excepto `COCINA` y `TERMOTANQUE`.** |
+| `tipo` | `string` | Sí | Tipo de etiqueta (`IMPORTADO`, `COCINA`, `TERMOTANQUE`, `PEABODY`, …). Vocabulario de la API: `IMPORTADO` (no `IMPORT`). `PEABODY` no pasa por control final (igual que expedición). |
+| `numero` | `int` / `string` | Sí | Número de serie de la etiqueta. Con `tipo=PEABODY` es string: el código **EAN (13 dígitos) o DUN (14 dígitos)** escaneado, solo numérico; otro formato devuelve `400`. |
+| `ean` | `string` | Condicional | Código EAN/GS1 escaneado. **Requerido para todos los tipos excepto `COCINA`, `TERMOTANQUE` y `PEABODY` (en `PEABODY` no se usa).** |
 
 **🏷️ Validación de EAN (productos importados).** Un mismo número de serie importado puede corresponder a **varios productos distintos**, diferenciados únicamente por su código EAN (GS1). Por eso, para los tipos que validan EAN, el `ean` escaneado se usa para **seleccionar cuál** de los productos de esa serie corresponde — no solo para validarlo contra uno resuelto arbitrariamente. Los tipos `COCINA` y `TERMOTANQUE` quedan desambiguados por el propio `tipo` y no requieren EAN.
 
@@ -147,8 +147,11 @@ GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
 | `409 Conflict` | `"El codigo EAN/DUN corresponde a mas de un producto"` | El código está en más de un producto. |
 
 ```
-GET /api/productos?tipo=PEABODY&numero=7798013733390
+GET /api/productos?tipo=PEABODY&numero=7798013733390   # EAN (13 dígitos) -> esDun=false, unidades=1
+GET /api/productos?tipo=PEABODY&numero=17798013733397  # DUN (14 dígitos) -> esDun=true, unidades=unidadesporbulto
 ```
+
+> **Tipo `EXTERNO` (`productos_clientes_cd`): pendiente, aún no implementado.** El repo no tiene modelo EF para esa tabla; hasta definirla `tipo=EXTERNO` responde como cualquier tipo desconocido.
 
 ---
 
@@ -194,7 +197,7 @@ Asocia y/o desasocia productos de un pallet en una única operación transaccion
 
 ### `POST /api/pallets/transferirExpedicion`
 
-Marca como transferidos (`transferir = true`) uno o más pallets identificados por su `codigo`. Los pallets no encontrados se ignoran.
+Marca como transferidos (`transferir = true`) uno o más pallets identificados por su `codigo`. Los pallets no encontrados se ignoran. El endpoint solo marca el pallet; no valida ni envía etiquetas: quién procesa `transferir = true` y cómo trata etiquetas EAN/DUN (13/14 dígitos) y repetidas se resuelve fuera de este repo.
 
 **Body:**
 ```json
