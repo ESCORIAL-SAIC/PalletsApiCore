@@ -343,8 +343,13 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         {
             var filas = existentes.Where(e => e.serie == item.serial && e.activo && !aDesactivar.Contains(e));
             if (Fun.EsCodigoPeabody(item.serial))
-                filas = filas.Where(e => e.producto_id == item.productId)
-                    .Take(unidadesPorItem.TryGetValue(item, out var n) ? n : 1);
+            {
+                // PEABODY: baja UNA fila (la mas reciente) por item deleted.
+                var candidatas = filas.Where(e => e.producto_id == item.productId).ToList();
+                if (candidatas.Count > 0)
+                    aDesactivar.Add(candidatas[Fun.IndiceMasReciente(candidatas.Select(c => c.fecha_alta).ToList())]);
+                continue;
+            }
             else
                 filas = filas.Take(1);
             aDesactivar.AddRange(filas.ToList());
