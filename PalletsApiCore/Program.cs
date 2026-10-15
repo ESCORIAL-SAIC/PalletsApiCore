@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+﻿using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using PalletsApiCore;
@@ -152,6 +152,26 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
             isAvailable = true,
             unidades = g.Count()
         });
+    // EXTERNO: producto_id apunta a productos_clientes_cd (no a producto); una linea por producto, unidades = filas activas.
+    var externosBase = await (
+        from c in context.cenker_prod_x_pallet
+        join x in context.productos_clientes_cd on c.producto_id equals x.id
+        where c.pallet_id == palletId && c.activo
+        select new { c.serie, x.id, x.codigo_producto, x.descripcion, x.cantidad_pallet, x.peso_total_pallet_kg }
+    ).AsNoTracking().ToListAsync();
+    var externosAgrupado = externosBase.GroupBy(x => x.id)
+        .Select(g => new Product
+        {
+            serial = g.First().serie,
+            productId = g.Key,
+            productCode = g.First().codigo_producto,
+            description = g.First().descripcion,
+            type = "EXTERNO",
+            maxCantByPallet = g.First().cantidad_pallet ?? 0,
+            isAvailable = true,
+            unidades = g.Count(),
+            pesoTotalPalletKg = g.First().peso_total_pallet_kg
+        });
     var result = productosBase.Where(x => !Fun.EsCodigoPeabody(x.Serie)).Select(x =>
     {
         var peabody = Fun.EsCodigoPeabody(x.Serie);
@@ -168,7 +188,7 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
             maxCantByPallet = x.cant_x_pallet,
             isAvailable = true
         };
-    }).Concat(peabodyAgrupado).ToList();
+    }).Concat(peabodyAgrupado).Concat(externosAgrupado).ToList();
 
     return Results.Ok(result);
 })
@@ -183,6 +203,32 @@ app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ES
         return Results.BadRequest("El tipo de producto es requerido");
     if (string.IsNullOrWhiteSpace(numero))
         return Results.BadRequest("El numero de producto es requerido");
+
+    if (tipo == "EXTERNO")
+    {
+        var ean13 = numero.Trim();
+        var filas = await context.productos_clientes_cd
+            .Where(x => x.codigo_ean != null && x.codigo_ean == ean13)
+            .AsNoTracking().ToListAsync();
+        if (filas.Count == 0)
+            return Results.NotFound("No se encontro un producto con ese codigo EAN");
+        if (filas.Count > 1)
+            return Results.Conflict("El codigo EAN corresponde a mas de un producto");
+        var f = filas[0];
+        if ((f.cantidad_pallet ?? 0) <= 0)
+            return Results.UnprocessableEntity("El producto no tiene cantidad por pallet configurada");
+        return Results.Ok(new Product
+        {
+            serial = ean13,
+            productId = f.id,
+            productCode = f.codigo_producto,
+            description = f.descripcion,
+            type = tipo,
+            maxCantByPallet = f.cantidad_pallet!.Value,
+            isAvailable = true,
+            pesoTotalPalletKg = f.peso_total_pallet_kg
+        });
+    }
 
     if (tipo == "PEABODY")
     {
@@ -318,10 +364,18 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
             .Where(p => p.pallet_id == palletId.id)
             .ToListAsync();
 
+        // EXTERNO: producto_id existe en productos_clientes_cd y no en producto (no se decide por formato de serie).
+        var idsPedidos = pallet.Products.Select(p => p.productId).Distinct().ToList();
+        var externoIds = await context.productos_clientes_cd
+            .Where(x => idsPedidos.Contains(x.id) && !context.producto.Any(p => p.id == x.id))
+            .Select(x => x.id).ToListAsync();
+        bool Externo(Product p) => externoIds.Contains(p.productId);
+        bool Peabody(Product p) => !Externo(p) && Fun.EsCodigoPeabody(p.serial);
+
         // Peabody: cada codigo (EAN=1, DUN=N unidades) se guarda como N filas activas con la misma serie.
         // Productos de otros tipos siguen una fila por serie.
         var unidadesPorItem = new Dictionary<Product, int>();
-        foreach (var item in pallet.Products.Where(p => Fun.EsCodigoPeabody(p.serial)))
+        foreach (var item in pallet.Products.Where(Peabody))
         {
             var datos = await (
                 from p in context.producto
@@ -342,9 +396,9 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         foreach (var item in productosDesasociar)
         {
             var filas = existentes.Where(e => e.serie == item.serial && e.activo && !aDesactivar.Contains(e));
-            if (Fun.EsCodigoPeabody(item.serial))
+            if (Peabody(item) || Externo(item))
             {
-                // PEABODY: baja UNA fila (la mas reciente) por item deleted.
+                // PEABODY/EXTERNO: baja UNA fila (la mas reciente) por item deleted.
                 var candidatas = filas.Where(e => e.producto_id == item.productId).ToList();
                 if (candidatas.Count > 0)
                     aDesactivar.Add(candidatas[Fun.IndiceMasReciente(candidatas.Select(c => c.fecha_alta).ToList())]);
@@ -356,18 +410,21 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         }
 
         // Cupo por producto (ud_producto.cant_x_pallet), todo o nada.
-        var nuevasPorProducto = productosAsociar.Where(i => Fun.EsCodigoPeabody(i.serial))
+        var nuevasPorProducto = productosAsociar.Where(i => Peabody(i) || Externo(i))
             .GroupBy(i => i.productId);
         foreach (var g in nuevasPorProducto)
         {
             var ya = existentes.Count(e => e.activo && e.producto_id == g.Key && !aDesactivar.Contains(e));
-            var pedidas = g.Sum(i => unidadesPorItem[i]);
-            var tope = await (
-                from p in context.producto
-                join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
-                where p.id == g.Key
-                select ud.cant_x_pallet
-            ).FirstOrDefaultAsync();
+            var pedidas = g.Sum(i => Externo(i) ? 1 : unidadesPorItem[i]);
+            var tope = externoIds.Contains(g.Key)
+                ? await context.productos_clientes_cd.Where(x => x.id == g.Key)
+                    .Select(x => x.cantidad_pallet ?? 0).FirstOrDefaultAsync()
+                : await (
+                    from p in context.producto
+                    join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
+                    where p.id == g.Key
+                    select ud.cant_x_pallet
+                ).FirstOrDefaultAsync();
             if (!Fun.CabeEnPallet(ya, pedidas, tope))
             {
                 await transaction.RollbackAsync();
@@ -380,8 +437,8 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
 
         foreach (var item in productosAsociar)
         {
-            var peabody = Fun.EsCodigoPeabody(item.serial);
-            if (!peabody && existentes.Any(e => e.serie == item.serial && e.activo))
+            var peabody = Peabody(item);
+            if (!peabody && !Externo(item) && existentes.Any(e => e.serie == item.serial && e.activo))
                 continue;
             for (var i = 0; i < (peabody ? unidadesPorItem[item] : 1); i++)
             {

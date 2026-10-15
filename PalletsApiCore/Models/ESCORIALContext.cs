@@ -44,6 +44,8 @@ public partial class ESCORIALContext : DbContext
     public virtual DbSet<aux_controlcalidad> aux_controlcalidad { get; set; }
     public virtual DbSet<ud_producto> ud_producto { get; set; }
 
+    public virtual DbSet<productos_clientes_cd> productos_clientes_cd { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) { }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -72,6 +74,12 @@ public partial class ESCORIALContext : DbContext
         modelBuilder.Entity<ud_producto>(entity =>
         {
             entity.HasKey(e => e.id).HasName("ud_producto_pkey");
+            entity.Property(e => e.id).ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<productos_clientes_cd>(entity =>
+        {
+            entity.HasKey(e => e.id).HasName("productos_clientes_cd_pkey");
             entity.Property(e => e.id).ValueGeneratedNever();
         });
 

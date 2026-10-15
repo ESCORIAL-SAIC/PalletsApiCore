@@ -15,5 +15,7 @@ namespace PalletsApiCore.Models
         // Solo PEABODY; null en el resto de tipos.
         public bool? esDun { get; set; }
         public int? unidades { get; set; }
+        // Solo EXTERNO; informativo, sin validar.
+        public decimal? pesoTotalPalletKg { get; set; }
     }
 }
