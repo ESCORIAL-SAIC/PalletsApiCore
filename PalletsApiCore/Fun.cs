@@ -9,6 +9,10 @@ namespace PalletsApiCore
         public static int CalcularUnidades(bool esDun, decimal? unidadesPorBulto) =>
             esDun ? (int)Math.Max(Math.Round(unidadesPorBulto ?? 1, MidpointRounding.AwayFromZero), 1) : 1;
 
+        // Cupo por pallet: una caja (DUN) entra entera o no entra. Tope <= 0 (dato mal cargado) = no entra.
+        public static bool CabeEnPallet(int yaAsociadas, int unidades, int tope) =>
+            tope > 0 && yaAsociadas + unidades <= tope;
+
         // Los importados llegan con una serie de 20 digitos, pero la serie real (la que existe
         // en las vistas y tablas) son los 9 digitos de la derecha.
         public static bool TryNormalizarSerie(string? numero, string tipo, out int serie)
