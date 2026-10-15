@@ -191,7 +191,7 @@ app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ES
         var esDun = m0.ud.codigo_dun == codigo;
         return Results.Ok(new Product
         {
-            serial = 0,
+            serial = codigo,
             productId = m0.producto.id,
             productCode = m0.producto.codigo,
             description = m0.producto.descripcion,
@@ -304,7 +304,77 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
             .Where(p => p.pallet_id == palletId.id)
             .ToListAsync();
 
-        foreach (var item in productosAsociar)
+        static bool EsPeabody(Product p) => p.type == "PEABODY" || Fun.EsCodigoPeabody(p.serial);
+
+        // PEABODY: baja UNA fila (la mas reciente) por item deleted. Las bajas van antes que las altas.
+        foreach (var item in productosDesasociar.Where(EsPeabody))
+        {
+            var candidatas = existentes
+                .Where(e => e.serie == item.serial && e.producto_id == item.productId && e.activo)
+                .ToList();
+            if (candidatas.Count == 0)
+                continue;
+            var pXp = candidatas[Fun.IndiceMasReciente(candidatas.Select(c => c.fecha_alta).ToList())];
+            pXp.activo = false;
+            pXp.fecha_modificacion = DateTime.Now.ToString();
+            context.cenker_pallets_auditoria.Add(new cenker_pallets_auditoria
+            {
+                id = Guid.NewGuid(),
+                fecha = DateTime.Now,
+                evento = "DESASOCIAR PRODUCTO",
+                objeto = "web.cenker_prod_x_pallet",
+                elemento_asociado = pXp.id,
+                valor_anterior = pXp.serie,
+                valor_actual = string.Empty,
+                usuario = pallet.Usuario
+            });
+        }
+
+        foreach (var item in productosAsociar.Where(EsPeabody))
+        {
+            var datos = await (
+                from p in context.producto
+                join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
+                where p.id == item.productId
+                select new { ud.codigo_dun, ud.cant_x_pallet, p.unidadesporbulto }
+            ).FirstOrDefaultAsync();
+            if (datos is null)
+                return Results.BadRequest("No se encontro el producto " + item.productId + ".");
+
+            var unidades = Fun.UnidadesPeabody(item.serial, datos.codigo_dun, datos.unidadesporbulto);
+            var activos = existentes.Count(e => e.producto_id == item.productId && e.activo);
+            if (!Fun.EntraEnPallet(activos, unidades, datos.cant_x_pallet))
+                return Results.Conflict("ITEM_QUOTA_REACHED: el codigo " + item.serial + " (" + unidades + " unidades) no entra en el pallet (" + activos + "/" + datos.cant_x_pallet + ").");
+
+            for (var i = 0; i < unidades; i++)
+            {
+                var pXp = new cenker_prod_x_pallet
+                {
+                    id = Guid.NewGuid(),
+                    pallet_id = palletId.id,
+                    producto_id = item.productId,
+                    activo = true,
+                    fecha_alta = DateTime.Now.ToString(),
+                    fecha_modificacion = DateTime.Now.ToString(),
+                    serie = item.serial
+                };
+                context.cenker_prod_x_pallet.Add(pXp);
+                existentes.Add(pXp);
+                context.cenker_pallets_auditoria.Add(new cenker_pallets_auditoria
+                {
+                    id = Guid.NewGuid(),
+                    fecha = DateTime.Now,
+                    evento = "ASOCIAR PRODUCTO",
+                    objeto = "web.cenker_prod_x_pallet",
+                    elemento_asociado = pXp.id,
+                    valor_anterior = string.Empty,
+                    valor_actual = pXp.serie,
+                    usuario = pallet.Usuario
+                });
+            }
+        }
+
+        foreach (var item in productosAsociar.Where(p => !EsPeabody(p)))
         {
             var exists = existentes
                 .FirstOrDefault(e => e.serie == item.serial && e.activo) is not null;
@@ -336,7 +406,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
             context.cenker_pallets_auditoria.Add(auditoria);
         }
 
-        foreach (var item in productosDesasociar)
+        foreach (var item in productosDesasociar.Where(p => !EsPeabody(p)))
         {
             var pXp = existentes
                 .FirstOrDefault(e => e.serie == item.serial && e.activo);

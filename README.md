@@ -179,6 +179,9 @@ Asocia y/o desasocia productos de un pallet en una única operación transaccion
 - `204 No Content` → operación exitosa.
 - `400 Bad Request` → `"El codigo de pallet es requerido."` / `"No hay productos para asociar."` / error no controlado (rollback).
 - `404 Not Found` → `"No se encontro el pallet."`
+- `409 Conflict` → `ITEM_QUOTA_REACHED` (PEABODY): la caja no entra entera en `cant_x_pallet` (rollback, no se parte).
+
+**PEABODY (EAN/DUN):** el mismo código se repite por unidad, sin dedup por serie. Una fila `cenker_prod_x_pallet` por unidad: EAN = 1, DUN = `unidadesporbulto` (calculado en servidor, se ignora `unidades` del cliente). Cada alta/baja se audita. Desasociar baja **una** fila (la más reciente) del par serie + producto por ítem `deleted`. Las bajas se procesan antes que las altas. Tope: activos del producto + unidades de la caja <= `cant_x_pallet`. Sin lock en DB: dos requests simultáneos podrían pasar el tope.
 
 > Este endpoint **confía** en los datos que llegan en el payload (los obtenidos previamente vía `GET /api/productos`); no vuelve a validar serie ni EAN. La asociación es idempotente: si la serie ya está activa en el pallet, se ignora.
 
