@@ -193,7 +193,7 @@ Marca como transferidos (`transferir = true`) uno o más pallets identificados p
 
 ### `GET /version`
 
-Devuelve la versión SemVer de la API en ejecución. Los tags git los crea el CI al mergear, según la etiqueta de la PR (`bugfix`/`feature`/`breaking`); ver [DEPLOY.md](DEPLOY.md).
+Devuelve la versión SemVer de la API en ejecución. Los tags git los crea el CI automáticamente al mergear, según las labels de la PR (`release:major`/`release:minor`, patch por default); ver [DEPLOY.md](DEPLOY.md).
 
 **Respuestas:**
 - `200 OK` → `{ "version": "0.1.0" }`
