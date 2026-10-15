@@ -272,5 +272,6 @@ Mauricio
 - `GET api/pallets/productos`: Peabody viene **agrupado**, una línea por producto con `unidades` = cantidad acumulada. Otros tipos: una línea por serie, sin cambios.
 - Un pallet **puede mezclar** Peabody con otros tipos: el cupo es por producto, no por pallet.
 - Desasociar Peabody envía el mismo código y baja las unidades que representa: **DUN baja N filas activas** (las más recientes del código/producto, con una auditoría por fila), **EAN baja 1**. N se calcula en servidor igual que al asociar. Si hay menos filas activas que N: **422** (`title: ITEM_UNITS_NOT_AVAILABLE`), rollback y no se baja nada.
+- En `asociar-productos` la rama Peabody se decide por `type == "PEABODY"` del ítem (no por la forma del serial). Se hace `Trim()` del `serial`; si el ítem es PEABODY y el serial no es numérico de 13/14 dígitos: **400** y no se carga nada. Ítems de otro tipo siguen el camino genérico sin cambios.
 - Asociar y desasociar validan que el código (EAN 13 / DUN 14) coincida con `ud_producto.codigogs1` o `codigo_dun` del `productId` indicado; si no, **400** y no se cambia nada.
 - Límite: sin bloqueo de concurrencia; dos requests simultáneos al mismo pallet podrían pasarse del tope.

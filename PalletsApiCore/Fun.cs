@@ -55,6 +55,24 @@ namespace PalletsApiCore
             return true;
         }
 
+        // La rama Peabody se decide por el tipo declarado del item, nunca por la forma del serial.
+        public static bool EsPeabody(Product item) => item.type == "PEABODY";
+
+        // asociar-productos: recorta item.serial y rechaza los items PEABODY cuyo serial no sea EAN/DUN valido
+        // (mismo criterio que GET api/productos: 13/14 digitos). Devuelve el mensaje de error o null.
+        // Los items de otro tipo no se validan por forma: siguen el camino generico.
+        public static string? NormalizarYValidarItems(IEnumerable<Product> items)
+        {
+            string? error = null;
+            foreach (var item in items)
+            {
+                item.serial = item.serial?.Trim();
+                if (error is null && EsPeabody(item) && !EsCodigoPeabody(item.serial))
+                    error = $"El serial '{item.serial}' del producto {item.productCode ?? item.productId.ToString()} no es un EAN/DUN valido (numerico de 13 o 14 digitos). No se cargo nada.";
+            }
+            return error;
+        }
+
         public sealed class PeabodyMatch
         {
             public producto Producto { get; init; } = null!;
@@ -117,9 +135,6 @@ namespace PalletsApiCore
 
         public static async Task<bool> IsAvailableAsync(string serial, Guid productoId, ESCORIALContext context)
         {
-            // PEABODY: el mismo EAN/DUN se repite en todas las unidades.
-            if (EsCodigoPeabody(serial))
-                return true;
             // Una misma serie puede resolver a varios productos (caso importados, desambiguado por EAN),
             // por eso la disponibilidad se evalua por la combinacion serie + producto, no solo por serie.
             var exists = await context.cenker_prod_x_pallet
