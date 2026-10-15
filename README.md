@@ -115,7 +115,7 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 | Parámetro | Tipo | Requerido | Descripción |
 |-----------|------|-----------|-------------|
 | `tipo` | `string` | Sí | Tipo de etiqueta (`IMPORTADO`, `COCINA`, `TERMOTANQUE`, …). |
-| `numero` | `int` | Sí | Número de serie de la etiqueta. |
+| `numero` | `int` / `string` | Sí | Número de serie de la etiqueta. Con `tipo=PEABODY` es el código **EAN (13 dígitos) o DUN (14 dígitos)**, solo numérico; otro formato devuelve `400`. |
 | `ean` | `string` | Condicional | Código EAN/GS1 escaneado. **Requerido para todos los tipos excepto `COCINA` y `TERMOTANQUE`.** |
 
 **🏷️ Validación de EAN (productos importados).** Un mismo número de serie importado puede corresponder a **varios productos distintos**, diferenciados únicamente por su código EAN (GS1). Por eso, para los tipos que validan EAN, el `ean` escaneado se usa para **seleccionar cuál** de los productos de esa serie corresponde — no solo para validarlo contra uno resuelto arbitrariamente. Los tipos `COCINA` y `TERMOTANQUE` quedan desambiguados por el propio `tipo` y no requieren EAN.
@@ -142,6 +142,7 @@ GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
 
 | Código | Mensaje | Causa |
 |--------|---------|-------|
+| `400 Bad Request` | `"El codigo PEABODY debe ser numerico de 13 (EAN) o 14 (DUN) digitos"` | `numero` no numérico o de largo distinto de 13/14. |
 | `404 Not Found` | `"No se encontro un producto con ese codigo EAN/DUN"` | El código no existe. |
 | `409 Conflict` | `"El codigo EAN/DUN corresponde a mas de un producto"` | El código está en más de un producto. |
 

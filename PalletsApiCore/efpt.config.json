@@ -19,6 +19,10 @@
          "ObjectType": 0
       },
       {
+         "Name": "public.ud_producto",
+         "ObjectType": 0
+      },
+      {
          "Name": "web.cenker_pallets",
          "ObjectType": 0
       },

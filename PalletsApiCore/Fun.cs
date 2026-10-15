@@ -55,6 +55,52 @@ namespace PalletsApiCore
             return true;
         }
 
+        public sealed class PeabodyMatch
+        {
+            public producto Producto { get; init; } = null!;
+            public ud_producto Ud { get; init; } = null!;
+        }
+
+        // PEABODY: productos cuyo EAN (codigogs1) o DUN (codigo_dun) es exactamente `codigo` (se ignoran vacios).
+        public static IQueryable<PeabodyMatch> PeabodyMatches(IQueryable<producto> productos, IQueryable<ud_producto> uds, string codigo) =>
+            from p in productos
+            join ud in uds on p.boextension_id equals (Guid?)ud.id
+            where (ud.codigogs1 != null && ud.codigogs1 != "" && ud.codigogs1 == codigo)
+               || (ud.codigo_dun != null && ud.codigo_dun != "" && ud.codigo_dun == codigo)
+            select new PeabodyMatch { Producto = p, Ud = ud };
+
+        // GET api/productos?tipo=PEABODY: valida el codigo (13/14 digitos) y resuelve el producto.
+        // `buscar` ejecuta la consulta (en produccion PeabodyMatches contra la DB). Devuelve el status HTTP:
+        // 200 producto, 400 codigo invalido, 404 inexistente, 409 ambiguo.
+        public static async Task<(int Status, string? Error, Product? Producto)> ResolverPeabodyAsync(
+            string numero, string tipo, Func<string, Task<List<PeabodyMatch>>> buscar)
+        {
+            var codigo = numero.Trim();
+            if (!TryNormalizarCodigoPeabody(codigo, out _))
+                return (400, "El codigo PEABODY debe ser numerico de 13 (EAN) o 14 (DUN) digitos", null);
+
+            var matches = await buscar(codigo);
+            if (matches.Count == 0)
+                return (404, "No se encontro un producto con ese codigo EAN/DUN", null);
+            if (matches.Select(m => m.Producto.id).Distinct().Count() > 1)
+                return (409, "El codigo EAN/DUN corresponde a mas de un producto", null);
+
+            var m0 = matches[0];
+            var esDun = m0.Ud.codigo_dun == codigo;
+            return (200, null, new Product
+            {
+                serial = codigo,
+                productId = m0.Producto.id,
+                productCode = m0.Producto.codigo,
+                description = m0.Producto.descripcion,
+                type = tipo,
+                maxCantByPallet = m0.Ud.cant_x_pallet,
+                isAvailable = true,
+                esDun = esDun,
+                unidades = CalcularUnidades(esDun, m0.Producto.unidadesporbulto)
+            });
+        }
+
         // Indices de las `cantidad` filas mas recientes (por fecha_alta). null si hay menos filas que `cantidad`
         // (no se baja nada parcial). fecha_alta es string dependiente de cultura: se parsea, lo no parseable
         // queda como mas antiguo y el empate lo gana el ultimo de la lista.
