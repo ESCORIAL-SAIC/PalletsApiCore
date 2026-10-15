@@ -3,8 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PalletsApiCore.Models
 {
-    // ponytail: schema "public" es supuesto (DBeaver lo mostraba bajo information_schema); confirmar. id sin PK declarada en DB.
-    [Table("productos_clientes_cd", Schema = "public")]
+    [Table("productos_clientes_cd", Schema = "web")]
     public class productos_clientes_cd
     {
         [Key]
