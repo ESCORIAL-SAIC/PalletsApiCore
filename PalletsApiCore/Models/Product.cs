@@ -15,6 +15,8 @@ namespace PalletsApiCore.Models
         // Solo PEABODY; null en el resto de tipos.
         public bool? esDun { get; set; }
         public int? unidades { get; set; }
+        // Solo PEABODY y EXTERNO en GET api/pallets/productos: filas activas de ese codigo en el pallet.
+        public int? cantidad { get; set; }
         // Solo EXTERNO; informativo, sin validar.
         public decimal? pesoTotalPalletKg { get; set; }
     }

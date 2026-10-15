@@ -14,11 +14,17 @@ dotnet build                            # build
 dotnet run --project PalletsApiCore     # run the API (Swagger UI available in Development)
 ```
 
-There is no test project in this repo.
+Tests: `PalletsApiCore.Tests` (xUnit). Local runtime is only .NET 10 while the project targets `net8.0`, so run:
+
+```bash
+DOTNET_ROLL_FORWARD=Major dotnet test
+```
+
+Testable logic lives in pure helpers in `Fun.cs` (no DB, no endpoints). Keep new logic there so it stays unit-testable. Other commands (single test filter, version script) and CI/release rules: ver AGENTS.md.
 
 ## Setup
 
-The app reads `PalletsApiCore/appsettings.json`, which is gitignored (it holds a real DB connection string and is not checked in). To run locally, copy `appsettings.Development.json` and fill in real values for `ConnectionStrings:EscorialPostgreSql`, or rename it to `appsettings.json` per the README.
+`appsettings.json` is gitignored (real DB connection string): ver AGENTS.md (Gotchas) and README. Never touch the DB (no writes, migrations, DDL): ver AGENTS.md (Reglas obligatorias).
 
 ## Architecture
 
@@ -28,4 +34,11 @@ The app reads `PalletsApiCore/appsettings.json`, which is gitignored (it holds a
 - **Read-only DB views** are mapped as `[Keyless]` entities with `entity.ToView(...)` in `ESCORIALContext.OnModelCreating` (e.g. `vp_etiquetas`, `api_pallets_controlfinal`, `v_persona`) — treat these as query-only, never insert/update through them.
 - **Domain flow**: `cenker_pallets` (a pallet) has many `cenker_prod_x_pallet` rows (product-serial associations, soft-deleted via `activo` rather than hard-deleted). `cenker_pallets.Products`/`Usuario` are `[NotMapped]` request-only fields used only to carry payload data into the `asociar-productos` endpoint, not persisted directly. Every association/disassociation writes a `cenker_pallets_auditoria` audit row. Serial numbers (`serie`/`numero`) are stored as strings in some tables and ints in others — endpoints do explicit `int.Parse`/`.ToString()` conversions at the boundaries; watch for this when touching serial-matching logic.
 - `Fun.cs` (`PalletsApiCore.Fun`) holds small static helpers shared by endpoints (e.g. `IsAvailableAsync`, which checks a serial isn't already actively associated to a pallet).
-- Auth (`POST /api/login`) is a plain username/password lookup joined across `empleado` → `ud_empleado` → `v_persona` with no hashing/token issuance — there's no auth middleware or JWT layer in this project.
+- Auth (`POST /api/login`) is a plain username/password lookup joined across `empleado` → `ud_empleado` → `v_persona`; no middleware/JWT (ver AGENTS.md).
+- **Peabody** (full contract in README, section "Peabody: tope por pallet"):
+  - `asociar-productos` decides Peabody by `item.type == "PEABODY"`, not by serial shape. EAN/DUN serial with another type → 400.
+  - Code is EAN (13 digits, 1 unit) or DUN (14 digits, N = `unidadesporbulto`, null/0 → 1). One active row in `cenker_prod_x_pallet` per unit, all with the same `serie` (the scanned code).
+  - Disassociating a DUN deactivates N rows (EAN: 1), one audit row each.
+  - 422 `ITEM_QUOTA_REACHED`: associating exceeds `cant_x_pallet`. 422 `ITEM_UNITS_NOT_AVAILABLE`: fewer than N active rows to disassociate. Both roll back everything.
+  - `GET api/pallets/productos` returns one line per product + code (`serial`, `cantidad`, `esDun`, `unidades`), so one product with EAN and DUN gives 2 lines.
+- **Externo** (`productos_clientes_cd`, README section Peabody → EXTERNO): `asociar-productos` decides by `item.type == "EXTERNO"` (`Fun.EsExterno`). 1 row per item (no N-row DUN logic), quota = `cantidad_pallet`, same 422/order as Peabody. GET `pallets/productos` returns own lines (`Fun.LineasExterno`). EF model hand-written; table schema unverified against DB.
