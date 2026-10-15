@@ -12,5 +12,8 @@ namespace PalletsApiCore.Models
         public int maxCantByPallet { get; set; }
         public bool isAvailable { get; set; }
         public bool deleted { get; set; }
+        // Solo PEABODY; null en el resto de tipos.
+        public bool? esDun { get; set; }
+        public int? unidades { get; set; }
     }
 }
