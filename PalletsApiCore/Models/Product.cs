@@ -15,5 +15,7 @@ namespace PalletsApiCore.Models
         // Solo PEABODY; null en el resto de tipos.
         public bool? esDun { get; set; }
         public int? unidades { get; set; }
+        // Solo PEABODY en GET api/pallets/productos: filas activas de ese codigo en el pallet.
+        public int? cantidad { get; set; }
     }
 }

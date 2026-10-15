@@ -125,7 +125,9 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
             ProductoId = p.id,
             p.codigo,
             p.descripcion,
-            u.cant_x_pallet
+            u.cant_x_pallet,
+            u.codigo_dun,
+            p.unidadesporbulto
         }
     )
     .AsNoTracking()
@@ -138,20 +140,9 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
         .Where(v => series.Contains((int)v.numero!) && productoIds.Contains((Guid)v.producto_id!))
         .AsNoTracking()
         .ToListAsync();
-    // PEABODY: una linea por producto con la cantidad acumulada (una fila activa = una unidad).
-    var peabodyAgrupado = productosBase.Where(x => Fun.EsCodigoPeabody(x.Serie))
-        .GroupBy(x => x.ProductoId)
-        .Select(g => new Product
-        {
-            serial = g.First().Serie,
-            productId = g.Key,
-            productCode = g.First().codigo,
-            description = g.First().descripcion,
-            type = "PEABODY",
-            maxCantByPallet = g.First().cant_x_pallet,
-            isAvailable = true,
-            unidades = g.Count()
-        });
+    // PEABODY: una linea por (producto, codigo); cantidad = filas activas de ese codigo.
+    var peabodyAgrupado = Fun.LineasPeabody(productosBase.Where(x => Fun.EsCodigoPeabody(x.Serie))
+        .Select(x => new Fun.PeabodyFila(x.Serie, x.ProductoId, x.codigo, x.descripcion, x.cant_x_pallet, x.codigo_dun, x.unidadesporbulto)));
     var result = productosBase.Where(x => !Fun.EsCodigoPeabody(x.Serie)).Select(x =>
     {
         var peabody = Fun.EsCodigoPeabody(x.Serie);
@@ -186,35 +177,16 @@ app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ES
 
     if (tipo == "PEABODY")
     {
-        // Sin serie, control final ni EAN: el codigo escaneado es EAN o DUN (match exacto).
-        var codigo = numero.Trim();
-        var matches = await (
-            from p in context.producto
-            join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
-            where (ud.codigogs1 != null && ud.codigogs1 != "" && ud.codigogs1 == codigo)
-               || (ud.codigo_dun != null && ud.codigo_dun != "" && ud.codigo_dun == codigo)
-            select new { producto = p, ud }
-        ).ToListAsync();
-
-        if (matches.Count == 0)
-            return Results.NotFound("No se encontro un producto con ese codigo EAN/DUN");
-        if (matches.Select(m => m.producto.id).Distinct().Count() > 1)
-            return Results.Conflict("El codigo EAN/DUN corresponde a mas de un producto");
-
-        var m0 = matches[0];
-        var esDun = m0.ud.codigo_dun == codigo;
-        return Results.Ok(new Product
+        // Sin serie, control final ni EAN: el codigo escaneado es EAN o DUN (match exacto, 13/14 digitos).
+        var (status, error, resuelto) = await Fun.ResolverPeabodyAsync(numero, tipo,
+            c => Fun.PeabodyMatches(context.producto, context.ud_producto, c).ToListAsync());
+        return status switch
         {
-            serial = codigo,
-            productId = m0.producto.id,
-            productCode = m0.producto.codigo,
-            description = m0.producto.descripcion,
-            type = tipo,
-            maxCantByPallet = m0.ud.cant_x_pallet,
-            isAvailable = true,
-            esDun = esDun,
-            unidades = Fun.CalcularUnidades(esDun, m0.producto.unidadesporbulto)
-        });
+            200 => Results.Ok(resuelto),
+            400 => Results.BadRequest(error),
+            404 => Results.NotFound(error),
+            _ => Results.Conflict(error)
+        };
     }
 
     if (!Fun.TryNormalizarSerie(numero, tipo, out var serie))
@@ -302,6 +274,10 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         if (palletId is null)
             return Results.NotFound("No se encontro el pallet.");
 
+        var errorItems = Fun.NormalizarYValidarItems(pallet.Products);
+        if (errorItems is not null)
+            return Results.BadRequest(errorItems);
+
         var productosAsociar = pallet.Products.Where(p => !p.deleted);
         var productosDesasociar = pallet.Products.Where(p => p.deleted);
 
@@ -321,20 +297,22 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         // Peabody: cada codigo (EAN=1, DUN=N unidades) se guarda como N filas activas con la misma serie.
         // Productos de otros tipos siguen una fila por serie.
         var unidadesPorItem = new Dictionary<Product, int>();
-        foreach (var item in pallet.Products.Where(p => Fun.EsCodigoPeabody(p.serial)))
+        foreach (var item in pallet.Products.Where(Fun.EsPeabody))
         {
             var datos = await (
                 from p in context.producto
                 join ud in context.ud_producto on p.boextension_id equals (Guid?)ud.id
                 where p.id == item.productId
-                select new { p.unidadesporbulto, ud.codigo_dun }
+                select new { p.unidadesporbulto, ud.codigo_dun, ud.codigogs1 }
             ).AsNoTracking().FirstOrDefaultAsync();
             if (datos is null)
                 return Results.NotFound($"No se encontro el producto {item.productId}.");
-            var esDun = !string.IsNullOrEmpty(datos.codigo_dun) && datos.codigo_dun == item.serial;
-            if (esDun && (datos.unidadesporbulto ?? 0) <= 0)
+            // El codigo debe ser el EAN o el DUN del producto indicado (aplica a asociar y desasociar).
+            if (!Fun.TryUnidadesPeabody(item.serial, datos.codigogs1, datos.codigo_dun, datos.unidadesporbulto, out var unidades))
+                return Results.BadRequest($"El codigo {item.serial} no corresponde al producto {item.productCode ?? item.productId.ToString()} (no coincide con su EAN ni DUN). No se cargo nada.");
+            if (item.serial == datos.codigo_dun && (datos.unidadesporbulto ?? 0) <= 0)
                 app.Logger.LogWarning("Producto {ProductoId} sin unidadesporbulto valido; se usa 1", item.productId);
-            unidadesPorItem[item] = Fun.CalcularUnidades(esDun, datos.unidadesporbulto);
+            unidadesPorItem[item] = unidades;
         }
 
         // Desasociar primero: resta del conteo antes de validar el cupo.
@@ -342,12 +320,21 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         foreach (var item in productosDesasociar)
         {
             var filas = existentes.Where(e => e.serie == item.serial && e.activo && !aDesactivar.Contains(e));
-            if (Fun.EsCodigoPeabody(item.serial))
+            if (Fun.EsPeabody(item))
             {
-                // PEABODY: baja UNA fila (la mas reciente) por item deleted.
+                // PEABODY: baja N filas (las mas recientes del codigo/producto): DUN = unidades del bulto, EAN = 1.
                 var candidatas = filas.Where(e => e.producto_id == item.productId).ToList();
-                if (candidatas.Count > 0)
-                    aDesactivar.Add(candidatas[Fun.IndiceMasReciente(candidatas.Select(c => c.fecha_alta).ToList())]);
+                var unidades = unidadesPorItem[item];
+                var indices = Fun.IndicesMasRecientes(candidatas.Select(c => c.fecha_alta).ToList(), unidades);
+                if (indices is null)
+                {
+                    await transaction.RollbackAsync();
+                    return Results.Problem(
+                        title: "ITEM_UNITS_NOT_AVAILABLE",
+                        detail: $"No se puede desasociar {item.serial} del producto {item.productCode}: representa {unidades} unidades y el pallet solo tiene {candidatas.Count} activas. No se cambio nada.",
+                        statusCode: StatusCodes.Status422UnprocessableEntity);
+                }
+                aDesactivar.AddRange(indices.Select(i => candidatas[i]));
                 continue;
             }
             else
@@ -356,7 +343,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         }
 
         // Cupo por producto (ud_producto.cant_x_pallet), todo o nada.
-        var nuevasPorProducto = productosAsociar.Where(i => Fun.EsCodigoPeabody(i.serial))
+        var nuevasPorProducto = productosAsociar.Where(Fun.EsPeabody)
             .GroupBy(i => i.productId);
         foreach (var g in nuevasPorProducto)
         {
@@ -380,7 +367,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
 
         foreach (var item in productosAsociar)
         {
-            var peabody = Fun.EsCodigoPeabody(item.serial);
+            var peabody = Fun.EsPeabody(item);
             if (!peabody && existentes.Any(e => e.serie == item.serial && e.activo))
                 continue;
             for (var i = 0; i < (peabody ? unidadesPorItem[item] : 1); i++)
