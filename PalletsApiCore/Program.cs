@@ -130,7 +130,9 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
     )
     .AsNoTracking()
     .ToListAsync();
-    var series = productosBase.Select(x => int.Parse(x.Serie)).Distinct().ToList();
+    // PEABODY: serie = EAN13/DUN14 (no entra en int ni en la vista de etiquetas)
+    var series = productosBase.Where(x => !Fun.EsCodigoPeabody(x.Serie))
+        .Select(x => int.Parse(x.Serie)).Distinct().ToList();
     var productoIds = productosBase.Select(x => x.ProductoId).Distinct().ToList();
     var etiquetas = await context.vp_etiquetas_con_importados
         .Where(v => series.Contains((int)v.numero!) && productoIds.Contains((Guid)v.producto_id!))
@@ -138,16 +140,17 @@ app.MapGet("api/pallets/productos", async (string? numero, ESCORIALContext conte
         .ToListAsync();
     var result = productosBase.Select(x =>
     {
-        var etiqueta = etiquetas.FirstOrDefault(e =>
+        var peabody = Fun.EsCodigoPeabody(x.Serie);
+        var etiqueta = peabody ? null : etiquetas.FirstOrDefault(e =>
             e.numero == int.Parse(x.Serie) && e.producto_id == x.ProductoId);
 
         return new Product
         {
-            serial = int.Parse(x.Serie),
+            serial = x.Serie,
             productId = x.ProductoId,
             productCode = x.codigo,
             description = x.descripcion,
-            type = etiqueta?.tipo,
+            type = peabody ? "PEABODY" : etiqueta?.tipo,
             maxCantByPallet = x.cant_x_pallet,
             isAvailable = true
         };
@@ -254,13 +257,13 @@ app.MapGet("api/productos", async (string? tipo, string? numero, string? ean, ES
 
     var product = new Product
     {
-        serial = serie,
+        serial = serie.ToString(),
         productId = seleccionado.producto.id,
         productCode = seleccionado.producto.codigo,
         description = seleccionado.producto.descripcion,
         type = tipo,
         maxCantByPallet = seleccionado.udProducto.cant_x_pallet,
-        isAvailable = await Fun.IsAvailableAsync(serie, seleccionado.producto.id, context)
+        isAvailable = await Fun.IsAvailableAsync(serie.ToString(), seleccionado.producto.id, context)
     };
 
     return Results.Ok(product);
@@ -304,7 +307,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         foreach (var item in productosAsociar)
         {
             var exists = existentes
-                .FirstOrDefault(e => e.serie == item.serial.ToString() && e.activo) is not null;
+                .FirstOrDefault(e => e.serie == item.serial && e.activo) is not null;
             if (exists)
                 continue;
             var pXp = new cenker_prod_x_pallet
@@ -315,7 +318,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
                 activo = true,
                 fecha_alta = DateTime.Now.ToString(),
                 fecha_modificacion = DateTime.Now.ToString(),
-                serie = item.serial.ToString()
+                serie = item.serial
             };
             context.cenker_prod_x_pallet.Add(pXp);
 
@@ -336,7 +339,7 @@ app.MapPost("api/pallets/asociar-productos", async (cenker_pallets pallet, ESCOR
         foreach (var item in productosDesasociar)
         {
             var pXp = existentes
-                .FirstOrDefault(e => e.serie == item.serial.ToString() && e.activo);
+                .FirstOrDefault(e => e.serie == item.serial && e.activo);
             if (pXp is null)
                 continue;
             pXp.activo = false;

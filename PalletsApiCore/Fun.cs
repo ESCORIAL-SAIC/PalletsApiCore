@@ -24,12 +24,23 @@ namespace PalletsApiCore
             return int.TryParse(s, out serie);
         }
 
-        public static async Task<bool> IsAvailableAsync(int serial, Guid productoId, ESCORIALContext context)
+        // PEABODY: serie = EAN 13 o DUN 14. Sin recortar ni parsear a int (excede int).
+        // ponytail: DUN no se resuelve contra DB aun (ud_producto no tiene CODIGO_DUN); agregar con #14.
+        public static bool TryNormalizarCodigoPeabody(string? codigo, out string serie)
+        {
+            serie = codigo ?? string.Empty;
+            return EsCodigoPeabody(codigo);
+        }
+
+        public static bool EsCodigoPeabody(string? c) =>
+            c is { Length: 13 or 14 } && c.All(char.IsAsciiDigit);
+
+        public static async Task<bool> IsAvailableAsync(string serial, Guid productoId, ESCORIALContext context)
         {
             // Una misma serie puede resolver a varios productos (caso importados, desambiguado por EAN),
             // por eso la disponibilidad se evalua por la combinacion serie + producto, no solo por serie.
             var exists = await context.cenker_prod_x_pallet
-                .AnyAsync(c => c.serie == serial.ToString() && c.producto_id == productoId && c.activo);
+                .AnyAsync(c => c.serie == serial && c.producto_id == productoId && c.activo);
             return !exists;
         }
     }
