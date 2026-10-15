@@ -138,7 +138,7 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
 ```
 
-**Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial = 0`, `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
+**Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial` = el código escaneado (EAN/DUN), `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
 
 | Código | Mensaje | Causa |
 |--------|---------|-------|
@@ -162,12 +162,12 @@ Asocia y/o desasocia productos de un pallet en una única operación transaccion
   "usuario": "usuarioLogueado",
   "products": [
     {
-      "serial": 12345,
+      "serial": "12345",
       "productId": "269ef17c-b822-43dd-a6f1-668d7f40e284",
       "deleted": false
     },
     {
-      "serial": 54321,
+      "serial": "54321",
       "productId": "957fc1cf-fbce-421d-af8a-54af3d60fc7c",
       "deleted": true
     }
@@ -236,7 +236,7 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `serial` | `int` | Número de serie de la etiqueta. |
+| `serial` | `string` | Número de serie de la etiqueta. |
 | `productId` | `guid` | Identificador del producto. |
 | `productCode` | `string` | Código interno del producto. |
 | `description` | `string` | Descripción del producto. |
@@ -246,6 +246,8 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 | `deleted` | `bool` | Solo en requests: marca la desasociación. |
 | `esDun` | `bool?` | Solo `PEABODY`: el código escaneado es DUN. |
 | `unidades` | `int?` | Solo `PEABODY`: unidades por bulto si es DUN, `1` si es EAN. |
+
+> `serial` es string: para `PEABODY` es el EAN 13 / DUN 14 (no entra en `int`). **Cambio de contrato** (label `release:major`). Filas `PEABODY` en `api/pallets/productos` devuelven `type: "PEABODY"`.
 
 ---
 
