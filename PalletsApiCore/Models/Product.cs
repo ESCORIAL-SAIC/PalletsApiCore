@@ -4,7 +4,7 @@ namespace PalletsApiCore.Models
 {
     public class Product
     {
-        public int serial { get; set; }
+        public string serial { get; set; }
         public Guid productId { get; set; }
         public string productCode { get; set; }
         public string description { get; set; }
