@@ -59,7 +59,7 @@ El login (`POST /api/login`) es una **validación plana de usuario/contraseña**
 | `POST` | `/api/login` | Autentica un empleado por usuario y contraseña. |
 | `GET`  | `/api/pallets` | Devuelve un pallet por su código. |
 | `GET`  | `/api/pallets/productos` | Lista los productos asociados a un pallet. |
-| `GET`  | `/api/productos` | Resuelve **un** producto por tipo + número de serie (y **EAN** cuando corresponde). |
+| `GET`  | `/api/productos` | Resuelve **un** producto por tipo + número de serie (y **EAN** cuando corresponde). `PEABODY` se resuelve por EAN/DUN. |
 | `POST` | `/api/pallets/asociar-productos` | Asocia y/o desasocia productos de un pallet. |
 | `POST` | `/api/pallets/transferirExpedicion` | Marca uno o más pallets como transferidos a expedición. |
 | `GET`  | `/version` | Devuelve la versión (SemVer) de la API en ejecución. |
@@ -136,6 +136,17 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 **Ejemplo:**
 ```
 GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
+```
+
+**Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial = 0`, `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
+
+| Código | Mensaje | Causa |
+|--------|---------|-------|
+| `404 Not Found` | `"No se encontro un producto con ese codigo EAN/DUN"` | El código no existe. |
+| `409 Conflict` | `"El codigo EAN/DUN corresponde a mas de un producto"` | El código está en más de un producto. |
+
+```
+GET /api/productos?tipo=PEABODY&numero=7798013733390
 ```
 
 ---
@@ -233,6 +244,8 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 | `maxCantByPallet` | `int` | Cantidad máxima por pallet (unidad de negocio). |
 | `isAvailable` | `bool` | `true` si la serie no está ya asociada activamente a un pallet. |
 | `deleted` | `bool` | Solo en requests: marca la desasociación. |
+| `esDun` | `bool?` | Solo `PEABODY`: el código escaneado es DUN. |
+| `unidades` | `int?` | Solo `PEABODY`: unidades por bulto si es DUN, `1` si es EAN. |
 
 ---
 
