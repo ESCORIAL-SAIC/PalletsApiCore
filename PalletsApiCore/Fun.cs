@@ -5,6 +5,10 @@ namespace PalletsApiCore
 {
     public static class Fun
     {
+        // DUN: unidades por bulto (minimo 1, entero); EAN: siempre 1.
+        public static int CalcularUnidades(bool esDun, decimal? unidadesPorBulto) =>
+            esDun ? (int)Math.Max(Math.Round(unidadesPorBulto ?? 1, MidpointRounding.AwayFromZero), 1) : 1;
+
         // Los importados llegan con una serie de 20 digitos, pero la serie real (la que existe
         // en las vistas y tablas) son los 9 digitos de la derecha.
         public static bool TryNormalizarSerie(string? numero, string tipo, out int serie)

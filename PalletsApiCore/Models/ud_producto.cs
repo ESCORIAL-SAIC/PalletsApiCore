@@ -9,5 +9,6 @@ namespace PalletsApiCore.Models
         [StringLength(40)]
         public int cant_x_pallet { get; set; }
         public string? codigogs1 { get; set; }
+        public string? codigo_dun { get; set; }
     }
 }
