@@ -59,7 +59,7 @@ El login (`POST /api/login`) es una **validación plana de usuario/contraseña**
 | `POST` | `/api/login` | Autentica un empleado por usuario y contraseña. |
 | `GET`  | `/api/pallets` | Devuelve un pallet por su código. |
 | `GET`  | `/api/pallets/productos` | Lista los productos asociados a un pallet. |
-| `GET`  | `/api/productos` | Resuelve **un** producto por tipo + número de serie (y **EAN** cuando corresponde). `PEABODY` se resuelve por EAN/DUN. |
+| `GET`  | `/api/productos` | Resuelve **un** producto por tipo + número de serie (y **EAN** cuando corresponde). `PEABODY` se resuelve por EAN/DUN; `EXTERNO` por EAN. |
 | `POST` | `/api/pallets/asociar-productos` | Asocia y/o desasocia productos de un pallet. |
 | `POST` | `/api/pallets/transferirExpedicion` | Marca uno o más pallets como transferidos a expedición. |
 | `GET`  | `/version` | Devuelve la versión (SemVer) de la API en ejecución. |
@@ -137,6 +137,8 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 ```
 GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
 ```
+
+**Tipo `EXTERNO`.** `numero` es el `codigo_ean` de `productos_clientes_cd`, match exacto. `404` sin match, `409` si hay más de una fila con ese EAN, `422` si `cantidad_pallet` es nulo o 0. Cada escaneo = 1 unidad; tope por pallet = `cantidad_pallet`. Responde `type = "EXTERNO"`, `isAvailable = true` y `pesoTotalPalletKg` (informativo, sin validar).
 
 **Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial` = el código escaneado (EAN/DUN), `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
 
@@ -246,6 +248,7 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 | `deleted` | `bool` | Solo en requests: marca la desasociación. |
 | `esDun` | `bool?` | Solo `PEABODY`: el código escaneado es DUN. |
 | `unidades` | `int?` | Solo `PEABODY`: unidades por bulto si es DUN, `1` si es EAN. |
+| `pesoTotalPalletKg` | `decimal?` | Solo `EXTERNO`: `peso_total_pallet_kg`, sin validar. |
 
 > `serial` es string: para `PEABODY` es el EAN 13 / DUN 14 (no entra en `int`). **Cambio de contrato** (label `release:major`). Filas `PEABODY` en `api/pallets/productos` devuelven `type: "PEABODY"`.
 
