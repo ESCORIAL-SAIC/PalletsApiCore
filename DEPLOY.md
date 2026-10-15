@@ -28,72 +28,28 @@ Guía para **containerizar** la Pallets API, **desplegarla** en un servidor Linu
 
 ## 🤖 Publicación automática (GitHub Actions)
 
-**No buildeás ni pusheás a mano, ni tocás números de versión.** El workflow `.github/workflows/docker-publish.yml` corre en cada push a `dev`/`main`, calcula el próximo número de versión, **crea el tag git** y buildea+pushea la imagen — todo en la misma corrida:
+**No buildeás ni pusheás a mano.** Flujo:
 
-| Push a… | Versión | Imágenes publicadas |
-|---------|---------|---------------------|
-| `dev`   | pre-release `vX.Y.Z-rc.N` | `…:X.Y.Z-rc.N`, `…:dev`, `…:sha-<commit>` |
-| `main`  | final `vX.Y.Z` | `…:X.Y.Z`, `…:X.Y`, `…:latest`, `…:sha-<commit>` |
-| tag manual `vX.Y.Z` | ese tag tal cual | `…:X.Y.Z`, `…:X.Y`, `…:latest`, `…:sha-<commit>` |
-| sin PR / `workflow_dispatch` / label `release:skip` | sin bump | sólo `…:latest` o `…:dev` + `…:sha-<commit>` |
-
-GitHub buildea con el `Dockerfile` y sube la imagen a **GitHub Container Registry** usando su `GITHUB_TOKEN` automático — **no hace falta crear ningún token (PAT)**. El mismo `GITHUB_TOKEN` (con permiso `contents: write`) pushea el tag git. Tu único paso es:
-
-```bash
-git push        # (o el merge de la PR a dev/main) — Actions calcula versión, taggea y publica
+```
+PR a dev  -> [test] + [Compilar imagen] (imagen con versión X.Y.Z-rc.N) -> merge -> [Publicar]
+PR dev->main -> mismo flujo, versión X.Y.Z
 ```
 
-Seguí el progreso en la pestaña **Actions** del repo.
+- `tests.yml`: `dotnet test`, un check por test. Check requerido `test`.
+- `build-pr.yml`: construye la imagen UNA vez en la PR con la versión final. Check requerido `Compilar imagen`.
+- `publicar.yml`: al mergear, verifica que el artefacto sea lo mergeado, pushea ESE mismo `imagen-*.tar.gz` a GHCR, crea el tag anotado (`versionCode=N`) y el release. No recompila.
+- La versión vive en los tags (sin prefijo `v`): `1.2.0-rc.3`, `1.2.0`. El CI no pushea commits a `dev`/`main`.
 
-### 🏷️ Versionado dirigido por labels de la PR (SemVer)
+**Etiqueta de la PR** (sube la versión): `bugfix` (default, PATCH), `feature` (MINOR), `breaking` (MAJOR). Con un rc en curso, un cambio del mismo nivel o menor suma 1 al rc.
 
-La versión de la API es **una única fuente de verdad: los tags git `vMAJOR.MINOR.PATCH`**. Ahora esos tags **los crea el CI automáticamente** al mergear, según las labels de la PR. [MinVer](https://github.com/adamralph/minver) sigue leyendo esos tags para los builds locales (`dotnet minver`) y para inyectar la versión en el assembly que expone `GET /version`.
+| Merge | Imágenes en GHCR |
+|-------|------------------|
+| PR a `dev` | `…:X.Y.Z-rc.N`, `…:dev` |
+| PR `dev` -> `main` | `…:X.Y.Z`, `…:X.Y`, `…:latest` |
 
-**El tamaño del bump lo decide la label de la PR:**
+Versión inicial del esquema: `0.1.0-rc.1` (`VERSION_INICIAL` en `build-pr.yml` y `publicar.yml`). Los tags viejos con prefijo `v` se ignoran. MinVer sigue sirviendo solo para builds locales.
 
-| Label en la PR | Bump al mergear | Ejemplo (desde `v1.4.2`) |
-|----------------|-----------------|--------------------------|
-| `release:major` | `MAJOR` (resetea minor y patch) | → `v2.0.0` |
-| `release:minor` | `MINOR` (resetea patch) | → `v1.5.0` |
-| *(ninguna label de release)* | **`PATCH`** (default) | → `v1.4.3` |
-| `release:skip` | **no crea versión**; sólo buildea la imagen de branch (`:dev`/`:latest` + `:sha`) | *(sin tag)* |
-
-**Qué pasa al mergear:**
-
-- **PR a `dev`** → se crea un **pre-release** `vX.Y.Z-rc.N`. El `X.Y.Z` es el próximo final calculado desde el último tag final según la label; `N` se autoincrementa por cada rc de ese mismo target (rc.1, rc.2, …). Publica `…:X.Y.Z-rc.N` + `…:dev` + `…:sha`.
-- **PR a `main`** → se crea el **release final** `vX.Y.Z`. Publica `…:X.Y.Z` + `…:X.Y` + `…:latest` + `…:sha`.
-- **Push de un tag manual `vX.Y.Z`** → se respeta ese tag tal cual (el CI **no** crea otro). Publica `…:X.Y.Z` + `…:X.Y` + `…:latest` + `…:sha`. Útil como escape para forzar una versión puntual.
-
-El número lo calcula `.github/scripts/compute-version.sh` en el runner y lo pasa al build como `--build-arg VERSION=…` (el `.git` no entra a la imagen por `.dockerignore`; el Dockerfile la aplica con `/p:MinVerVersionOverride`). El label OCI `org.opencontainers.image.version` de la imagen refleja la versión publicada.
-
-> 💡 El script es testeable en local sin GitHub con overrides por env, p. ej.:
-> ```bash
-> DRY_RUN=1 GITHUB_REF=refs/heads/main PR_LABELS="release:minor" \
->   MOCK_TAGS="v0.1.0 v0.1.1" bash .github/scripts/compute-version.sh
-> # -> version=0.2.0
-> ```
-
-### 🔧 Setup inicial del versionado (una sola vez)
-
-1. **Crear las labels de release en el repo:**
-   ```bash
-   gh label create release:minor --description "Bump MINOR al mergear" --color 1d76db
-   gh label create release:major --description "Bump MAJOR al mergear" --color b60205
-   gh label create release:skip  --description "No crear versión (sólo imagen de branch)" --color cfd3d7
-   ```
-2. **Sembrar el primer tag** para que el cálculo tenga una base (si no hay tags, el primer patch arranca en `v0.0.1`):
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-
-### ⚙️ Configuración única en GitHub (una sola vez)
-
-1. **Tras el primer run exitoso**, hacer el paquete **público** para que el server baje sin login:
-   `ESCORIAL-SAIC → Packages → pallets-api → Package settings → Change visibility → Public`.
-2. (Opcional) *Connect repository* en esa misma pantalla, para linkear el package al repo.
-3. Si el workflow falla al pushear por permisos:
-   `repo → Settings → Actions → General → Workflow permissions → Read and write permissions`.
+Rulesets: `dev` exige `test` + `Compilar imagen` y rama al día; `main` exige los mismos sin "al día" (el build verifica que main quede idéntico a dev).
 
 ---
 
