@@ -58,6 +58,9 @@ namespace PalletsApiCore
         // La rama Peabody se decide por el tipo declarado del item, nunca por la forma del serial.
         public static bool EsPeabody(Product item) => item.type == "PEABODY";
 
+        // EXTERNO: igual, por tipo declarado. Su serial es el EAN de productos_clientes_cd (cada escaneo = 1 unidad).
+        public static bool EsExterno(Product item) => item.type == "EXTERNO";
+
         // asociar-productos: recorta item.serial y rechaza los items PEABODY cuyo serial no sea EAN/DUN valido
         // (mismo criterio que GET api/productos: 13/14 digitos). Devuelve el mensaje de error o null.
         // Los items de otro tipo siguen el camino generico, salvo que su serial tenga forma de EAN/DUN (400).
@@ -70,7 +73,9 @@ namespace PalletsApiCore
                 if (error is null && EsPeabody(item) && !EsCodigoPeabody(item.serial))
                     error = $"El serial '{item.serial}' del producto {item.productCode ?? item.productId.ToString()} no es un EAN/DUN valido (numerico de 13 o 14 digitos). No se cargo nada.";
                 // Series no Peabody son int (max 10 digitos): una forma de EAN/DUN con otro type es un type mal enviado.
-                else if (error is null && !EsPeabody(item) && EsCodigoPeabody(item.serial))
+                else if (error is null && EsExterno(item) && string.IsNullOrEmpty(item.serial))
+                    error = $"El serial del producto externo {item.productCode ?? item.productId.ToString()} es requerido (EAN). No se cargo nada.";
+                else if (error is null && !EsPeabody(item) && !EsExterno(item) && EsCodigoPeabody(item.serial))
                     error = $"El serial {item.serial} parece un EAN/DUN: el type debe ser PEABODY";
             }
             return error;
@@ -100,6 +105,35 @@ namespace PalletsApiCore
                         esDun = esDun,
                         unidades = CalcularUnidades(esDun, f.UnidadesPorBulto),
                         cantidad = g.Count()
+                    };
+                })
+                .OrderBy(l => l.productCode, StringComparer.Ordinal)
+                .ThenBy(l => l.serial, StringComparer.Ordinal)
+                .ToList();
+
+        public sealed record ExternoFila(string Serie, Guid ProductoId, string? Codigo, string? Descripcion,
+            int? CantidadPallet, decimal? PesoTotalPalletKg);
+
+        // GET api/pallets/productos: EXTERNO una linea por (producto, serie). cantidad = filas activas (1 unidad cada una),
+        // unidades = 1. Lineas propias: no se mezclan con las Peabody (que agrupan por producto+codigo).
+        public static List<Product> LineasExterno(IEnumerable<ExternoFila> filasActivas) =>
+            filasActivas
+                .GroupBy(f => (f.ProductoId, f.Serie))
+                .Select(g =>
+                {
+                    var f = g.First();
+                    return new Product
+                    {
+                        serial = f.Serie,
+                        productId = f.ProductoId,
+                        productCode = f.Codigo,
+                        description = f.Descripcion,
+                        type = "EXTERNO",
+                        maxCantByPallet = f.CantidadPallet ?? 0,
+                        isAvailable = true,
+                        unidades = 1,
+                        cantidad = g.Count(),
+                        pesoTotalPalletKg = f.PesoTotalPalletKg
                     };
                 })
                 .OrderBy(l => l.productCode, StringComparer.Ordinal)

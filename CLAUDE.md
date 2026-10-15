@@ -41,3 +41,4 @@ Testable logic lives in pure helpers in `Fun.cs` (no DB, no endpoints). Keep new
   - Disassociating a DUN deactivates N rows (EAN: 1), one audit row each.
   - 422 `ITEM_QUOTA_REACHED`: associating exceeds `cant_x_pallet`. 422 `ITEM_UNITS_NOT_AVAILABLE`: fewer than N active rows to disassociate. Both roll back everything.
   - `GET api/pallets/productos` returns one line per product + code (`serial`, `cantidad`, `esDun`, `unidades`), so one product with EAN and DUN gives 2 lines.
+- **Externo** (`productos_clientes_cd`, README section Peabody → EXTERNO): `asociar-productos` decides by `item.type == "EXTERNO"` (`Fun.EsExterno`). 1 row per item (no N-row DUN logic), quota = `cantidad_pallet`, same 422/order as Peabody. GET `pallets/productos` returns own lines (`Fun.LineasExterno`). Table is `web.productos_clientes_cd` (DDL confirmed). Unverified: FK from `cenker_prod_x_pallet.producto_id` to `producto` (would break EXTERNO inserts) and whether `id` is a PK.

@@ -39,6 +39,10 @@
          "ObjectType": 0
       },
       {
+         "Name": "web.productos_clientes_cd",
+         "ObjectType": 0
+      },
+      {
          "Name": "public.vp_etiquetas",
          "ObjectType": 3
       },

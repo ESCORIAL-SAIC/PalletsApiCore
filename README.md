@@ -59,7 +59,7 @@ El login (`POST /api/login`) es una **validación plana de usuario/contraseña**
 | `POST` | `/api/login` | Autentica un empleado por usuario y contraseña. |
 | `GET`  | `/api/pallets` | Devuelve un pallet por su código. |
 | `GET`  | `/api/pallets/productos` | Lista los productos asociados a un pallet. |
-| `GET`  | `/api/productos` | Resuelve **un** producto por tipo + número de serie (y **EAN** cuando corresponde). `PEABODY` se resuelve por EAN/DUN. |
+| `GET`  | `/api/productos` | Resuelve **un** producto por tipo + número de serie (y **EAN** cuando corresponde). `PEABODY` se resuelve por EAN/DUN; `EXTERNO` por EAN. |
 | `POST` | `/api/pallets/asociar-productos` | Asocia y/o desasocia productos de un pallet. |
 | `POST` | `/api/pallets/transferirExpedicion` | Marca uno o más pallets como transferidos a expedición. |
 | `GET`  | `/version` | Devuelve la versión (SemVer) de la API en ejecución. |
@@ -138,6 +138,8 @@ Resuelve **un** producto a partir de su etiqueta, aplicando las validaciones de 
 GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
 ```
 
+**Tipo `EXTERNO`.** `numero` es el `codigo_ean` de `productos_clientes_cd`, match exacto. `404` sin match, `409` si hay más de una fila con ese EAN, `422` si `cantidad_pallet` es nulo o 0. Cada escaneo = 1 unidad; tope por pallet = `cantidad_pallet`. Responde `type = "EXTERNO"`, `isAvailable = true` y `pesoTotalPalletKg` (informativo, sin validar).
+
 **Tipo `PEABODY`.** No usa serie, control final ni `ean`: `numero` es el código escaneado, **EAN (GS1) o DUN**, con match exacto (se ignoran vacíos). Responde con `serial` = el código escaneado (EAN/DUN), `isAvailable = true` y los campos extra `esDun` y `unidades` (`unidades` = unidades por bulto si es DUN, mínimo 1; `1` si es EAN). En los demás tipos esos campos vienen `null`.
 
 | Código | Mensaje | Causa |
@@ -150,8 +152,6 @@ GET /api/productos?tipo=IMPORTADO&numero=260400005&ean=7798013733390
 GET /api/productos?tipo=PEABODY&numero=7798013733390   # EAN (13 dígitos) -> esDun=false, unidades=1
 GET /api/productos?tipo=PEABODY&numero=17798013733397  # DUN (14 dígitos) -> esDun=true, unidades=unidadesporbulto
 ```
-
-> **Tipo `EXTERNO` (`productos_clientes_cd`): pendiente, aún no implementado.** El repo no tiene modelo EF para esa tabla; hasta definirla `tipo=EXTERNO` responde como cualquier tipo desconocido.
 
 ---
 
@@ -257,7 +257,8 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 | `deleted` | `bool` | Solo en requests: marca la desasociación. |
 | `esDun` | `bool?` | Solo `PEABODY`: el código escaneado es DUN. |
 | `unidades` | `int?` | Solo `PEABODY`: unidades que representa un ítem del código (por bulto si es DUN, `1` si es EAN). |
-| `cantidad` | `int?` | Solo `PEABODY` en `GET /api/pallets/productos`: filas activas de ese código en el pallet. |
+| `cantidad` | `int?` | Solo `PEABODY` y `EXTERNO` en `GET /api/pallets/productos`: filas activas de ese código en el pallet. |
+| `pesoTotalPalletKg` | `decimal?` | Solo `EXTERNO`: `peso_total_pallet_kg`, sin validar. |
 
 > `serial` es string: para `PEABODY` es el EAN 13 / DUN 14 (no entra en `int`). **Cambio de contrato** (label `breaking`). Filas `PEABODY` en `api/pallets/productos` devuelven `type: "PEABODY"`.
 
@@ -285,4 +286,5 @@ Mauricio
 - Desasociar Peabody envía el mismo código y baja las unidades que representa: **DUN baja N filas activas** (las más recientes del código/producto, con una auditoría por fila), **EAN baja 1**. N se calcula en servidor igual que al asociar. Si hay menos filas activas que N: **422** (`title: ITEM_UNITS_NOT_AVAILABLE`), rollback y no se baja nada.
 - En `asociar-productos` la rama Peabody se decide por `type == "PEABODY"` del ítem (no por la forma del serial). Se hace `Trim()` del `serial`; si el ítem es PEABODY y el serial no es numérico de 13/14 dígitos: **400** y no se carga nada. Ítems de otro tipo siguen el camino genérico sin cambios.
 - Asociar y desasociar validan que el código (EAN 13 / DUN 14) coincida con `ud_producto.codigogs1` o `codigo_dun` del `productId` indicado; si no, **400** y no se cambia nada.
+- **EXTERNO** (`productos_clientes_cd`, #19): en `asociar-productos` se decide por `type == "EXTERNO"` del ítem (no por forma del serial; `serial` = EAN, se hace `Trim()`, vacío = **400**, `productId` inexistente en `productos_clientes_cd` = **404**). Cada ítem = **1 fila** (asociar y desasociar; no hay baja de N), tope `cantidad_pallet` por producto con el mismo **422** `ITEM_QUOTA_REACHED`, y mismo orden bajas → cupo → altas. `GET api/pallets/productos` devuelve EXTERNO como **líneas propias** por (producto, `serial`) con `cantidad`, `unidades = 1` y `pesoTotalPalletKg`; no afecta las líneas Peabody. La tabla es `web.productos_clientes_cd` (schema `web`, columnas y tipos confirmados por DDL). **Requisito humano (sin verificar):** si `cenker_prod_x_pallet.producto_id` tiene FK a `producto` (si la hay, el insert de EXTERNO falla) y si `id` es PK en la DB (el modelo EF la asume).
 - Límite: sin bloqueo de concurrencia; dos requests simultáneos al mismo pallet podrían pasarse del tope.
