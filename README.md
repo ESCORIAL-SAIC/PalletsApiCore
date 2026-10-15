@@ -263,3 +263,12 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 ## ✍️ Autor
 
 Mauricio
+
+## Peabody: tope por pallet
+
+- Una fila activa de `web.cenker_prod_x_pallet` = **una unidad**. Un EAN agrega 1 fila; un DUN agrega N filas (N = `Fun.CalcularUnidades`, `unidadesporbulto` nulo/0 cae a 1 y se loguea warning). Todas con la misma `serie` (el código escaneado). No se toca el esquema.
+- `POST api/pallets/asociar-productos`: valida `ya_asociadas + unidades <= ud_producto.cant_x_pallet` por producto, dentro de la transacción y todo o nada. Si no entra: **422** (`title: ITEM_QUOTA_REACHED`) y no se carga nada. Las desasociaciones del mismo request se restan antes de validar. `cant_x_pallet` nulo/0 = rechaza (no hay tope válido).
+- `GET api/pallets/productos`: Peabody viene **agrupado**, una línea por producto con `unidades` = cantidad acumulada. Otros tipos: una línea por serie, sin cambios.
+- Un pallet **puede mezclar** Peabody con otros tipos: el cupo es por producto, no por pallet.
+- Desasociar Peabody envía el mismo código (DUN baja N filas, EAN 1).
+- Límite: sin bloqueo de concurrencia; dos requests simultáneos al mismo pallet podrían pasarse del tope.
