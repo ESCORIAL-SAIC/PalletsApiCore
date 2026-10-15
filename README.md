@@ -97,7 +97,7 @@ Devuelve los datos del pallet cuyo `codigo` coincide con `numero`.
 
 ### `GET /api/pallets/productos?numero=<codigoPallet>`
 
-Lista los productos **activos** asociados al pallet.
+Lista los productos **activos** asociados al pallet. Las líneas `PEABODY` vienen una por **producto + código** (`serial` EAN o DUN, con `cantidad`, `esDun` y `unidades`); ver [Peabody: tope por pallet](#peabody-tope-por-pallet).
 
 **Respuestas:**
 - `200 OK` → arreglo de [`Product`](#-modelo-product).
@@ -165,11 +165,14 @@ Asocia y/o desasocia productos de un pallet en una única operación transaccion
     {
       "serial": "12345",
       "productId": "269ef17c-b822-43dd-a6f1-668d7f40e284",
+      "type": "IMPORTADO",
       "deleted": false
     },
     {
-      "serial": "54321",
+      "serial": "17791234567897",
       "productId": "957fc1cf-fbce-421d-af8a-54af3d60fc7c",
+      "productCode": "P001",
+      "type": "PEABODY",
       "deleted": true
     }
   ]
@@ -179,9 +182,13 @@ Asocia y/o desasocia productos de un pallet en una única operación transaccion
 **Respuestas:**
 - `204 No Content` → operación exitosa.
 - `400 Bad Request` → `"El codigo de pallet es requerido."` / `"No hay productos para asociar."` / error no controlado (rollback).
-- `404 Not Found` → `"No se encontro el pallet."`
+- `400 Bad Request` (Peabody, sin cargar nada) → serial de un ítem `type: "PEABODY"` que no es numérico de 13/14 dígitos; el código no coincide con el EAN (`codigogs1`) ni DUN (`codigo_dun`) del `productId`; o ítem **no** PEABODY cuyo serial tiene forma de EAN/DUN (`"El serial X parece un EAN/DUN: el type debe ser PEABODY"`).
+- `404 Not Found` → `"No se encontro el pallet."` / `"No se encontro el producto <id>."` (Peabody).
+- `422 Unprocessable Entity` → `ITEM_QUOTA_REACHED` (el alta supera `cant_x_pallet`) o `ITEM_UNITS_NOT_AVAILABLE` (se desasocia un código de N unidades y hay menos de N filas activas). Rollback, no se cambia nada.
 
-> Este endpoint **confía** en los datos que llegan en el payload (los obtenidos previamente vía `GET /api/productos`); no vuelve a validar serie ni EAN. La asociación es idempotente: si la serie ya está activa en el pallet, se ignora.
+> **`type` es obligatorio para Peabody:** la rama Peabody se decide por `type == "PEABODY"` (exacto), no por la forma del serial. Los ítems no Peabody siguen el camino genérico.
+
+> Para tipos no Peabody este endpoint **confía** en los datos del payload (los obtenidos previamente vía `GET /api/productos`); no vuelve a validar serie ni EAN. Para `PEABODY` sí valida el código contra el producto y el cupo (ver arriba). La asociación es idempotente: si la serie ya está activa en el pallet, se ignora.
 
 ---
 
@@ -241,7 +248,7 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 | `productId` | `guid` | Identificador del producto. |
 | `productCode` | `string` | Código interno del producto. |
 | `description` | `string` | Descripción del producto. |
-| `type` | `string` | Tipo de etiqueta (`IMPORTADO`, `COCINA`, …). |
+| `type` | `string` | Tipo de etiqueta (`IMPORTADO`, `COCINA`, `PEABODY`, …). **En requests de `asociar-productos` es obligatorio para Peabody** (`PEABODY` exacto). |
 | `maxCantByPallet` | `int` | Cantidad máxima por pallet (unidad de negocio). |
 | `isAvailable` | `bool` | `true` si la serie no está ya asociada activamente a un pallet. |
 | `deleted` | `bool` | Solo en requests: marca la desasociación. |
@@ -249,7 +256,7 @@ DTO de transporte usado en las respuestas de productos y en el payload de asocia
 | `unidades` | `int?` | Solo `PEABODY`: unidades que representa un ítem del código (por bulto si es DUN, `1` si es EAN). |
 | `cantidad` | `int?` | Solo `PEABODY` en `GET /api/pallets/productos`: filas activas de ese código en el pallet. |
 
-> `serial` es string: para `PEABODY` es el EAN 13 / DUN 14 (no entra en `int`). **Cambio de contrato** (label `release:major`). Filas `PEABODY` en `api/pallets/productos` devuelven `type: "PEABODY"`.
+> `serial` es string: para `PEABODY` es el EAN 13 / DUN 14 (no entra en `int`). **Cambio de contrato** (label `breaking`). Filas `PEABODY` en `api/pallets/productos` devuelven `type: "PEABODY"`.
 
 ---
 

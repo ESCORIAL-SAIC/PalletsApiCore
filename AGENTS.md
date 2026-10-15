@@ -16,6 +16,7 @@
 - `PalletsApiCore/appsettings.json` is gitignored (real creds). Copy from `appsettings.Development.json` and set `ConnectionStrings:EscorialPostgreSql`. Never commit it.
 - `Models/*` is scaffolded by EF Power Tools (`efpt.config.json`); regenerate rather than hand-edit.
 - No auth: `/api/login` is plain user/password check, no token/middleware.
+- Peabody se decide por `item.type == "PEABODY"` en `asociar-productos` (no por la forma del serial); serial EAN/DUN con otro type -> 400.
 - Version comes from git tags via MinVer (tag prefix `v`), not from code.
 
 ## CI / release

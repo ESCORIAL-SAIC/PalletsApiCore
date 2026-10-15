@@ -31,12 +31,8 @@ public class ItemsPeabodyTests
     }
 
     [Fact]
-    public void NoPeabody_13Digitos_NoEntraAlCaminoPeabody()
-    {
-        var item = P("7791234567890", "IMPORTADO");
-        Assert.Null(Fun.NormalizarYValidarItems(new[] { item }));
-        Assert.False(Fun.EsPeabody(item));
-    }
+    public void NoPeabody_NoEntraAlCaminoPeabody() =>
+        Assert.False(Fun.EsPeabody(P("260400005", "IMPORTADO")));
 
     [Fact]
     public void NoPeabody_SerialNoValidoPorForma_NoSeRechaza() =>
@@ -44,4 +40,19 @@ public class ItemsPeabodyTests
 
     [Fact]
     public void Peabody_SeDecidePorTipo() => Assert.True(Fun.EsPeabody(P("cualquiera")));
+
+    [Theory]
+    [InlineData("7791234567890", "IMPORTADO")]
+    [InlineData("17791234567897", "COCINA")]
+    [InlineData("7791234567890", null)]
+    [InlineData("7791234567890", "peabody")]
+    public void NoPeabody_SerialConFormaEanDun_Rechaza(string serial, string? type)
+    {
+        var error = Fun.NormalizarYValidarItems(new[] { P(serial, type!) });
+        Assert.Equal($"El serial {serial} parece un EAN/DUN: el type debe ser PEABODY", error);
+    }
+
+    [Fact]
+    public void NoPeabody_SerieNormal_Ok() =>
+        Assert.Null(Fun.NormalizarYValidarItems(new[] { P("260400005", "IMPORTADO"), P("1234567890", "COCINA") }));
 }

@@ -60,7 +60,7 @@ namespace PalletsApiCore
 
         // asociar-productos: recorta item.serial y rechaza los items PEABODY cuyo serial no sea EAN/DUN valido
         // (mismo criterio que GET api/productos: 13/14 digitos). Devuelve el mensaje de error o null.
-        // Los items de otro tipo no se validan por forma: siguen el camino generico.
+        // Los items de otro tipo siguen el camino generico, salvo que su serial tenga forma de EAN/DUN (400).
         public static string? NormalizarYValidarItems(IEnumerable<Product> items)
         {
             string? error = null;
@@ -69,6 +69,9 @@ namespace PalletsApiCore
                 item.serial = item.serial?.Trim();
                 if (error is null && EsPeabody(item) && !EsCodigoPeabody(item.serial))
                     error = $"El serial '{item.serial}' del producto {item.productCode ?? item.productId.ToString()} no es un EAN/DUN valido (numerico de 13 o 14 digitos). No se cargo nada.";
+                // Series no Peabody son int (max 10 digitos): una forma de EAN/DUN con otro type es un type mal enviado.
+                else if (error is null && !EsPeabody(item) && EsCodigoPeabody(item.serial))
+                    error = $"El serial {item.serial} parece un EAN/DUN: el type debe ser PEABODY";
             }
             return error;
         }
@@ -99,6 +102,8 @@ namespace PalletsApiCore
                         cantidad = g.Count()
                     };
                 })
+                .OrderBy(l => l.productCode, StringComparer.Ordinal)
+                .ThenBy(l => l.serial, StringComparer.Ordinal)
                 .ToList();
 
         public sealed class PeabodyMatch
