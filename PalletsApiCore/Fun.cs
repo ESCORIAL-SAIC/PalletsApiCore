@@ -25,7 +25,7 @@ namespace PalletsApiCore
         }
 
         // PEABODY: serie = EAN 13 o DUN 14. Sin recortar ni parsear a int (excede int).
-        // ponytail: DUN no se resuelve contra DB aun (ud_producto no tiene CODIGO_DUN); agregar con #14.
+        // ponytail: sin validar contra DB; el DUN se resuelve por ud_producto.codigo_dun (#14).
         public static bool TryNormalizarCodigoPeabody(string? codigo, out string serie)
         {
             serie = codigo ?? string.Empty;
